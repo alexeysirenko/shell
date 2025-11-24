@@ -8,5 +8,5 @@ fn main() {
 
     let mut command = "".to_string();
     stdin().read_line(&mut command).unwrap();
-    println!("{}: command ot found", command.trim());
+    println!("{}: command not found", command.trim());
 }
