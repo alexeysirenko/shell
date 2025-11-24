@@ -1,3 +1,4 @@
+use codecrafters_shell::handle_command;
 use io::stdin;
 #[allow(unused_imports)]
 use std::io::{self, Write};
@@ -9,6 +10,6 @@ fn main() {
 
         let mut command = "".to_string();
         stdin().read_line(&mut command).unwrap();
-        println!("{}: command not found", command.trim());
+        handle_command(command.trim())
     }
 }
