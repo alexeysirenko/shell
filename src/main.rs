@@ -7,9 +7,13 @@ fn main() {
     loop {
         print!("$ ");
         io::stdout().flush().unwrap();
-
         let mut prompt = "".to_string();
         stdin().read_line(&mut prompt).unwrap();
-        handle_command(prompt.trim())
+        let prompt = prompt.trim();
+        if prompt.is_empty() {
+            continue;
+        }
+
+        handle_command(&prompt)
     }
 }
