@@ -4,7 +4,7 @@ pub fn handle_command(prompt: &str) -> () {
     let parts: Vec<&str> = prompt.split_ascii_whitespace().collect();
     match parts.as_slice() {
         ["exit", ..] => exit(),
-        ["echo", text] => echo(text),
+        ["echo", text @ ..] => echo(text.join(" ").as_ref()),
         _ => println!("{}: command not found", prompt),
     }
 }
