@@ -8,8 +8,8 @@ fn main() {
         print!("$ ");
         io::stdout().flush().unwrap();
 
-        let mut command = "".to_string();
-        stdin().read_line(&mut command).unwrap();
-        handle_command(command.trim())
+        let mut prompt = "".to_string();
+        stdin().read_line(&mut prompt).unwrap();
+        handle_command(prompt.trim())
     }
 }
