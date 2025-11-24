@@ -5,7 +5,7 @@ pub fn handle_command(command: &str) -> () {
     match command {
         "exit" => {
             println!("exiting...");
-            process::exit(1)
+            process::exit(0)
         }
         _ => println!("{}: command not found", command.trim()),
     }
