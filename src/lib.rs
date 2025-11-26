@@ -1,5 +1,8 @@
-use anyhow::{Result, anyhow, bail, ensure};
-use std::process;
+use anyhow::{Result, anyhow};
+use is_executable::IsExecutable;
+use std::fs;
+use std::path::PathBuf;
+use std::{env, process};
 use strum_macros::{EnumIter, EnumString};
 
 #[derive(Debug, EnumString, EnumIter, PartialEq)]
@@ -68,7 +71,25 @@ fn r#type(command: &str) {
 
     if is_built_in {
         println!("{} is a shell builtin", command);
+    } else if let Some(path) = find_in_path(command) {
+        println!("{command} is {}", path.display());
     } else {
         println!("{}: not found", command);
     }
+}
+
+fn find_in_path(executable: &str) -> Option<PathBuf> {
+    env::var_os("PATH").and_then(|paths| {
+        env::split_paths(&paths).find_map(|dir| {
+            let full_path = dir.join(executable);
+            if full_path.is_file() && full_path.is_executable() {
+                match fs::canonicalize(&full_path) {
+                    Ok(absolute) => Some(absolute),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            }
+        })
+    })
 }
