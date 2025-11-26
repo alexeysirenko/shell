@@ -1,4 +1,4 @@
-use codecrafters_shell::handle_command;
+use codecrafters_shell::{handle_command, parse_command};
 use io::stdin;
 #[allow(unused_imports)]
 use std::io::{self, Write};
@@ -14,6 +14,9 @@ fn main() {
             continue;
         }
 
-        handle_command(&prompt)
+        match parse_command(prompt) {
+            Ok(command) => handle_command(command),
+            Err(_) => println!("unknown command: {prompt}"),
+        }
     }
 }
