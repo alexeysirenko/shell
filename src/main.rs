@@ -16,7 +16,7 @@ fn main() {
 
         match parse_command(prompt) {
             Ok(command) => handle_command(command),
-            Err(_) => println!("unknown command: {prompt}"),
+            Err(_) => println!("{prompt}: command not found"),
         }
     }
 }
