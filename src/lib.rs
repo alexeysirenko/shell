@@ -1,7 +1,9 @@
 use anyhow::{Result, anyhow};
 use is_executable::IsExecutable;
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::process::{Command as CmdCommand, Stdio};
 use std::{env, process};
 use strum_macros::{EnumIter, EnumString};
 
@@ -29,6 +31,7 @@ pub enum Command {
     Exit,
     Echo(String),
     Type(String),
+    Exec { command: String, args: Vec<String> },
 }
 
 pub fn parse_command(prompt: &str) -> Result<Command> {
@@ -37,13 +40,19 @@ pub fn parse_command(prompt: &str) -> Result<Command> {
         .split_first()
         .ok_or_else(|| anyhow!("Empty command"))?;
 
-    let kind: CommandKind = name.parse().map_err(|_| anyhow!("{name}: not found"))?;
-    let arg = args.join(" ");
+    let maybe_kind: Result<CommandKind> = name.parse().map_err(|_| anyhow!("{name}: not found"));
 
-    match kind {
-        CommandKind::Exit => Ok(Command::Exit),
-        CommandKind::Echo => Ok(Command::Echo(arg)),
-        CommandKind::Type => Ok(Command::Type(arg)),
+    if let Ok(known_kind) = maybe_kind {
+        match known_kind {
+            CommandKind::Exit => Ok(Command::Exit),
+            CommandKind::Echo => Ok(Command::Echo(args.join(" "))),
+            CommandKind::Type => Ok(Command::Type(args.join(" "))),
+        }
+    } else {
+        Ok(Command::Exec {
+            command: name.to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+        })
     }
 }
 
@@ -52,6 +61,7 @@ pub fn handle_command(command: Command) -> () {
         Command::Exit => exit(),
         Command::Echo(text) => echo(&text),
         Command::Type(command) => r#type(&command),
+        Command::Exec { command, args } => try_exec(command, args),
     }
 }
 
@@ -64,18 +74,26 @@ fn echo(text: &str) -> () {
 }
 
 fn r#type(command: &str) {
-    let is_built_in = command
-        .parse::<CommandKind>()
-        .map(|k| k.is_builtin())
-        .unwrap_or(false);
-
-    if is_built_in {
+    if is_built_in(command) {
         println!("{} is a shell builtin", command);
     } else if let Some(path) = find_in_path(command) {
         println!("{command} is {}", path.display());
     } else {
         println!("{}: not found", command);
     }
+}
+
+fn try_exec(command: String, args: Vec<String>) -> () {
+    if let Err(e) = exec(command, args) {
+        println!("{e}");
+    }
+}
+
+fn is_built_in(command: &str) -> bool {
+    command
+        .parse::<CommandKind>()
+        .map(|k| k.is_builtin())
+        .unwrap_or(false)
 }
 
 fn find_in_path(executable: &str) -> Option<PathBuf> {
@@ -92,4 +110,23 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
             }
         })
     })
+}
+
+fn exec(command: String, args: Vec<String>) -> Result<()> {
+    let absolute_path = find_in_path(&command).ok_or_else(|| anyhow!("{}: not found", command))?;
+
+    let mut child = CmdCommand::new(absolute_path)
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()?;
+
+    if let Some(stdout) = child.stdout.take() {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            println!("{line}");
+        }
+    }
+
+    child.wait()?;
+    Ok(())
 }
