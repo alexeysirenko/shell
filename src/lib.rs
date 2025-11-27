@@ -113,6 +113,8 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
 }
 
 fn exec(command: String, args: Vec<String>) -> Result<()> {
+    find_in_path(&command).ok_or(anyhow!("{command}: command not found"))?;
+
     let mut child = CmdCommand::new(command)
         .args(&args)
         .stdout(Stdio::piped())
