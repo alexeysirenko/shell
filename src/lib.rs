@@ -101,10 +101,13 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
         env::split_paths(&paths).find_map(|dir| {
             let full_path = dir.join(executable);
             if full_path.is_file() && full_path.is_executable() {
+                /*
                 match fs::canonicalize(&full_path) {
                     Ok(absolute) => Some(absolute),
                     Err(_) => None,
                 }
+                */
+                Some(full_path)
             } else {
                 None
             }
