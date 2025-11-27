@@ -101,13 +101,10 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
         env::split_paths(&paths).find_map(|dir| {
             let full_path = dir.join(executable);
             if full_path.is_file() && full_path.is_executable() {
-                /*
                 match fs::canonicalize(&full_path) {
                     Ok(absolute) => Some(absolute),
                     Err(_) => None,
                 }
-                */
-                Some(full_path)
             } else {
                 None
             }
@@ -116,9 +113,7 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
 }
 
 fn exec(command: String, args: Vec<String>) -> Result<()> {
-    let absolute_path = find_in_path(&command).ok_or_else(|| anyhow!("{}: not found", command))?;
-
-    let mut child = CmdCommand::new(absolute_path)
+    let mut child = CmdCommand::new(command)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
