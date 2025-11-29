@@ -17,19 +17,8 @@ pub enum CommandKind {
     Type,
     #[strum(serialize = "pwd")]
     Pwd,
-}
-
-impl CommandKind {
-    const BUILTINS: &'static [CommandKind] = &[
-        CommandKind::Exit,
-        CommandKind::Echo,
-        CommandKind::Type,
-        CommandKind::Pwd,
-    ];
-
-    fn is_builtin(&self) -> bool {
-        Self::BUILTINS.contains(self)
-    }
+    #[strum(serialize = "cd")]
+    Cd,
 }
 
 #[derive(Debug)]
@@ -39,6 +28,7 @@ pub enum Command {
     Type(String),
     Exec { command: String, args: Vec<String> },
     Pwd,
+    Cd(String),
 }
 
 pub fn parse_command(prompt: &str) -> Result<Command> {
@@ -54,6 +44,7 @@ pub fn parse_command(prompt: &str) -> Result<Command> {
         Ok(CommandKind::Echo) => Ok(Command::Echo(arg_str)),
         Ok(CommandKind::Type) => Ok(Command::Type(arg_str)),
         Ok(CommandKind::Pwd) => Ok(Command::Pwd),
+        Ok(CommandKind::Cd) => Ok(Command::Cd(arg_str)),
         Err(_) => Ok(Command::Exec {
             command: name.to_string(),
             args: args.iter().map(|s| s.to_string()).collect(),
@@ -66,8 +57,9 @@ pub fn handle_command(command: Command) {
         Command::Exit => exit(),
         Command::Echo(text) => echo(&text),
         Command::Type(command) => r#type(&command),
-        Command::Exec { command, args } => try_exec(&command, &args),
+        Command::Exec { command, args } => try_run(|| exec(&command, &args)),
         Command::Pwd => pwd(),
+        Command::Cd(path) => try_run(|| cd(&path)),
     }
 }
 
@@ -89,17 +81,17 @@ fn r#type(command: &str) {
     }
 }
 
-fn try_exec(command: &str, args: &[String]) {
-    if let Err(e) = exec(command, args) {
+fn try_run<F>(f: F)
+where
+    F: FnOnce() -> Result<()>,
+{
+    if let Err(e) = f() {
         println!("{e}");
     }
 }
 
 fn is_built_in(command: &str) -> bool {
-    command
-        .parse::<CommandKind>()
-        .map(|k| k.is_builtin())
-        .unwrap_or(false)
+    command.parse::<CommandKind>().is_ok()
 }
 
 fn find_in_path(executable: &str) -> Option<PathBuf> {
@@ -115,7 +107,7 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
     })
 }
 
-fn exec(command: &str, args: &[String]) -> Result<i32> {
+fn exec(command: &str, args: &[String]) -> Result<()> {
     find_in_path(command).ok_or(anyhow!("{command}: command not found"))?;
 
     let mut child = CmdCommand::new(command)
@@ -130,8 +122,8 @@ fn exec(command: &str, args: &[String]) -> Result<i32> {
         }
     }
 
-    let code = child.wait()?;
-    Ok(code.code().unwrap_or(1))
+    let _code = child.wait()?;
+    Ok(())
 }
 
 fn pwd() {
@@ -139,5 +131,20 @@ fn pwd() {
         if let Ok(absolute) = fs::canonicalize(dir) {
             println!("{}", absolute.display())
         }
+    }
+}
+
+fn cd(path: &str) -> Result<()> {
+    let target = match path {
+        "" | "~" => env::home_dir(),
+        p if p.starts_with("~/") => env::home_dir().map(|home| home.join(&p[2..])),
+        p => Some(PathBuf::from(p)),
+    };
+
+    match target {
+        Some(t) => {
+            env::set_current_dir(t).map_err(|_| anyhow!("cd: {path}: No such file or directory"))
+        }
+        None => Err(anyhow!("cd: {path}: No such file or directory")),
     }
 }
