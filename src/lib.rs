@@ -40,36 +40,33 @@ pub fn parse_command(prompt: &str) -> Result<Command> {
         .split_first()
         .ok_or_else(|| anyhow!("Empty command"))?;
 
-    let maybe_kind: Result<CommandKind> = name.parse().map_err(|_| anyhow!("{name}: not found"));
+    let arg_str = args.join(" ");
 
-    if let Ok(known_kind) = maybe_kind {
-        match known_kind {
-            CommandKind::Exit => Ok(Command::Exit),
-            CommandKind::Echo => Ok(Command::Echo(args.join(" "))),
-            CommandKind::Type => Ok(Command::Type(args.join(" "))),
-        }
-    } else {
-        Ok(Command::Exec {
+    match name.parse::<CommandKind>() {
+        Ok(CommandKind::Exit) => Ok(Command::Exit),
+        Ok(CommandKind::Echo) => Ok(Command::Echo(arg_str)),
+        Ok(CommandKind::Type) => Ok(Command::Type(arg_str)),
+        Err(_) => Ok(Command::Exec {
             command: name.to_string(),
             args: args.iter().map(|s| s.to_string()).collect(),
-        })
+        }),
     }
 }
 
-pub fn handle_command(command: Command) -> () {
+pub fn handle_command(command: Command) {
     match command {
         Command::Exit => exit(),
         Command::Echo(text) => echo(&text),
         Command::Type(command) => r#type(&command),
-        Command::Exec { command, args } => try_exec(command, args),
+        Command::Exec { command, args } => try_exec(&command, &args),
     }
 }
 
-fn exit() -> () {
+fn exit() {
     process::exit(0)
 }
 
-fn echo(text: &str) -> () {
+fn echo(text: &str) {
     println!("{text}")
 }
 
@@ -83,7 +80,7 @@ fn r#type(command: &str) {
     }
 }
 
-fn try_exec(command: String, args: Vec<String>) -> () {
+fn try_exec(command: &str, args: &[String]) {
     if let Err(e) = exec(command, args) {
         println!("{e}");
     }
@@ -101,10 +98,7 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
         env::split_paths(&paths).find_map(|dir| {
             let full_path = dir.join(executable);
             if full_path.is_file() && full_path.is_executable() {
-                match fs::canonicalize(&full_path) {
-                    Ok(absolute) => Some(absolute),
-                    Err(_) => None,
-                }
+                fs::canonicalize(&full_path).ok()
             } else {
                 None
             }
@@ -112,11 +106,11 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
     })
 }
 
-fn exec(command: String, args: Vec<String>) -> Result<()> {
-    find_in_path(&command).ok_or(anyhow!("{command}: command not found"))?;
+fn exec(command: &str, args: &[String]) -> Result<i32> {
+    find_in_path(command).ok_or(anyhow!("{command}: command not found"))?;
 
     let mut child = CmdCommand::new(command)
-        .args(&args)
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()?;
@@ -127,6 +121,6 @@ fn exec(command: String, args: Vec<String>) -> Result<()> {
         }
     }
 
-    child.wait()?;
-    Ok(())
+    let code = child.wait()?;
+    Ok(code.code().unwrap_or(1))
 }
