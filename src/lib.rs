@@ -15,11 +15,17 @@ pub enum CommandKind {
     Echo,
     #[strum(serialize = "type")]
     Type,
+    #[strum(serialize = "pwd")]
+    Pwd,
 }
 
 impl CommandKind {
-    const BUILTINS: &'static [CommandKind] =
-        &[CommandKind::Exit, CommandKind::Echo, CommandKind::Type];
+    const BUILTINS: &'static [CommandKind] = &[
+        CommandKind::Exit,
+        CommandKind::Echo,
+        CommandKind::Type,
+        CommandKind::Pwd,
+    ];
 
     fn is_builtin(&self) -> bool {
         Self::BUILTINS.contains(self)
@@ -32,6 +38,7 @@ pub enum Command {
     Echo(String),
     Type(String),
     Exec { command: String, args: Vec<String> },
+    Pwd,
 }
 
 pub fn parse_command(prompt: &str) -> Result<Command> {
@@ -46,6 +53,7 @@ pub fn parse_command(prompt: &str) -> Result<Command> {
         Ok(CommandKind::Exit) => Ok(Command::Exit),
         Ok(CommandKind::Echo) => Ok(Command::Echo(arg_str)),
         Ok(CommandKind::Type) => Ok(Command::Type(arg_str)),
+        Ok(CommandKind::Pwd) => Ok(Command::Pwd),
         Err(_) => Ok(Command::Exec {
             command: name.to_string(),
             args: args.iter().map(|s| s.to_string()).collect(),
@@ -59,6 +67,7 @@ pub fn handle_command(command: Command) {
         Command::Echo(text) => echo(&text),
         Command::Type(command) => r#type(&command),
         Command::Exec { command, args } => try_exec(&command, &args),
+        Command::Pwd => pwd(),
     }
 }
 
@@ -123,4 +132,12 @@ fn exec(command: &str, args: &[String]) -> Result<i32> {
 
     let code = child.wait()?;
     Ok(code.code().unwrap_or(1))
+}
+
+fn pwd() {
+    if let Ok(dir) = env::current_dir() {
+        if let Ok(absolute) = fs::canonicalize(dir) {
+            println!("{}", absolute.display())
+        }
+    }
 }
