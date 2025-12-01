@@ -45,12 +45,7 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
 
     for c in prompt.chars() {
         match c {
-            '\'' => {
-                is_single = !is_single;
-                if !is_single {
-                    push(&mut buffer, &mut tokens)
-                }
-            }
+            '\'' => is_single = !is_single,
             ' ' if !is_single => push(&mut buffer, &mut tokens),
             _ => buffer.push(c),
         }
@@ -212,6 +207,14 @@ mod tests {
         assert_eq!(
             parse_prompt("cmd 'arg one' arg2"),
             vec!["cmd", "arg one", "arg2"]
+        );
+    }
+
+    #[test]
+    fn test_mixed2() {
+        assert_eq!(
+            parse_prompt("echo 'hello     script' 'shell''world' example''test"),
+            vec!["echo", "hello     script", "shellworld", "exampletest"]
         );
     }
 }
