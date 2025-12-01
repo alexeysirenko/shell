@@ -35,6 +35,7 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     let mut buffer = String::new();
     let mut is_single = false;
+    let mut is_double = false;
 
     let push = |buffer: &mut String, tokens: &mut Vec<String>| {
         if !buffer.is_empty() {
@@ -45,8 +46,9 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
 
     for c in prompt.chars() {
         match c {
-            '\'' => is_single = !is_single,
-            ' ' if !is_single => push(&mut buffer, &mut tokens),
+            '"' if !is_single => is_double = !is_double,
+            '\'' if !is_double => is_single = !is_single,
+            ' ' if !is_single && !is_double => push(&mut buffer, &mut tokens),
             _ => buffer.push(c),
         }
     }
@@ -215,6 +217,38 @@ mod tests {
         assert_eq!(
             parse_prompt("echo 'hello     script' 'shell''world' example''test"),
             vec!["echo", "hello     script", "shellworld", "exampletest"]
+        );
+    }
+
+    #[test]
+    fn test_double_quotes1() {
+        assert_eq!(
+            parse_prompt("echo \"hello    world\""),
+            vec!["echo", "hello    world"]
+        );
+    }
+
+    #[test]
+    fn test_double_quotes2() {
+        assert_eq!(
+            parse_prompt("echo \"hello\"\"world\""),
+            vec!["echo", "helloworld"]
+        );
+    }
+
+    #[test]
+    fn test_double_quotes3() {
+        assert_eq!(
+            parse_prompt("echo \"hello\" \"world\""),
+            vec!["echo", "hello", "world"]
+        );
+    }
+
+    #[test]
+    fn test_double_quotes4() {
+        assert_eq!(
+            parse_prompt("echo \"shell's test\""),
+            vec!["echo", "shell's test"]
         );
     }
 }
