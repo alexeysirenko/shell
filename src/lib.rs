@@ -31,11 +31,37 @@ pub enum Command {
     Cd(String),
 }
 
-pub fn parse_command(prompt: &str) -> Result<Command> {
-    let parts: Vec<&str> = prompt.split_ascii_whitespace().collect();
-    let (name, args) = parts
-        .split_first()
-        .ok_or_else(|| anyhow!("Empty command"))?;
+pub fn parse_prompt(prompt: &str) -> Vec<String> {
+    let mut tokens: Vec<String> = Vec::new();
+    let mut buffer = String::new();
+    let mut is_single = false;
+
+    let push = |buffer: &mut String, tokens: &mut Vec<String>| {
+        if !buffer.is_empty() {
+            tokens.push(buffer.to_string());
+        }
+        buffer.clear();
+    };
+
+    for c in prompt.chars() {
+        match c {
+            '\'' => {
+                is_single = !is_single;
+                if !is_single {
+                    push(&mut buffer, &mut tokens)
+                }
+            }
+            ' ' if !is_single => push(&mut buffer, &mut tokens),
+            _ => buffer.push(c),
+        }
+    }
+    push(&mut buffer, &mut tokens);
+
+    tokens
+}
+
+pub fn parse_command(args: Vec<String>) -> Result<Command> {
+    let (name, args) = args.split_first().ok_or_else(|| anyhow!("Empty command"))?;
 
     let arg_str = args.join(" ");
 
@@ -146,5 +172,46 @@ fn cd(path: &str) -> Result<()> {
             env::set_current_dir(t).map_err(|_| anyhow!("cd: {path}: No such file or directory"))
         }
         None => Err(anyhow!("cd: {path}: No such file or directory")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simple_words() {
+        assert_eq!(parse_prompt("echo hello"), vec!["echo", "hello"]);
+    }
+
+    #[test]
+    fn test_single_quotes() {
+        assert_eq!(
+            parse_prompt("echo 'hello world'"),
+            vec!["echo", "hello world"]
+        );
+    }
+
+    #[test]
+    fn test_multiple_spaces() {
+        assert_eq!(parse_prompt("echo   hello"), vec!["echo", "hello"]);
+    }
+
+    #[test]
+    fn test_spaces_in_quotes() {
+        assert_eq!(parse_prompt("'hello   world'"), vec!["hello   world"]);
+    }
+
+    #[test]
+    fn test_empty() {
+        assert_eq!(parse_prompt(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_mixed() {
+        assert_eq!(
+            parse_prompt("cmd 'arg one' arg2"),
+            vec!["cmd", "arg one", "arg2"]
+        );
     }
 }
