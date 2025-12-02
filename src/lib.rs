@@ -299,7 +299,7 @@ mod tests {
     fn test_backslash2() {
         assert_eq!(
             parse_prompt("echo before\\ after"),
-            vec!["echo", "before ", "after"]
+            vec!["echo", "before after"]
         );
     }
 
@@ -307,7 +307,7 @@ mod tests {
     fn test_backslash3() {
         assert_eq!(
             parse_prompt("echo test\nexample"),
-            vec!["echo", "testnexample"]
+            vec!["echo", "test", "example"]
         );
     }
 
@@ -321,6 +321,6 @@ mod tests {
 
     #[test]
     fn test_backslash5() {
-        assert_eq!(parse_prompt("echo \'hello\'"), vec!["echo", "\'hello\'"]);
+        assert_eq!(parse_prompt("echo \'hello\'"), vec!["echo", "hello"]);
     }
 }
