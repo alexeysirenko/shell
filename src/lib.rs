@@ -7,6 +7,12 @@ use std::process::{Command as CmdCommand, Stdio};
 use std::{env, process};
 use strum_macros::{EnumIter, EnumString};
 
+pub enum PromptQuote {
+    Unquoted,
+    SingleQuoted,
+    DoubleQuoted,
+}
+
 #[derive(Debug, EnumString, EnumIter, PartialEq)]
 pub enum CommandKind {
     #[strum(serialize = "exit")]
@@ -34,8 +40,7 @@ pub enum Command {
 pub fn parse_prompt(prompt: &str) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     let mut buffer = String::new();
-    let mut is_single = false;
-    let mut is_double = false;
+    let mut quote = PromptQuote::Unquoted;
 
     let push = |buffer: &mut String, tokens: &mut Vec<String>| {
         if !buffer.is_empty() {
@@ -45,11 +50,21 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
     };
 
     for c in prompt.chars() {
-        match c {
-            '"' if !is_single => is_double = !is_double,
-            '\'' if !is_double => is_single = !is_single,
-            ' ' if !is_single && !is_double => push(&mut buffer, &mut tokens),
-            _ => buffer.push(c),
+        match quote {
+            PromptQuote::Unquoted => match c {
+                ' ' => push(&mut buffer, &mut tokens),
+                '\'' => quote = PromptQuote::SingleQuoted,
+                '"' => quote = PromptQuote::DoubleQuoted,
+                _ => buffer.push(c),
+            },
+            PromptQuote::SingleQuoted => match c {
+                '\'' => quote = PromptQuote::Unquoted,
+                _ => buffer.push(c),
+            },
+            PromptQuote::DoubleQuoted => match c {
+                '"' => quote = PromptQuote::Unquoted,
+                _ => buffer.push(c),
+            },
         }
     }
     push(&mut buffer, &mut tokens);
@@ -251,4 +266,36 @@ mod tests {
             vec!["echo", "shell's test"]
         );
     }
+    /*
+    #[test]
+    fn test_backslash1() {
+        assert_eq!(
+            parse_prompt("echo world\\ \\ \\ \\ \\ \\ script"),
+            vec!["echo", "world      script"]
+        );
+    }
+
+    #[test]
+    fn test_backslash2() {
+        assert_eq!(
+            parse_prompt("echo before\\ after"),
+            vec!["echo", "before ", "after"]
+        );
+    }
+
+    #[test]
+    fn test_backslash3() {
+        assert_eq!(parse_prompt("echo test\nexample"), vec!["testnexample"]);
+    }
+
+    #[test]
+    fn test_backslash4() {
+        assert_eq!(parse_prompt("echo hello\\world"), vec!["hello\\world"]);
+    }
+
+    #[test]
+    fn test_backslash5() {
+        assert_eq!(parse_prompt("echo \'hello\'"), vec!["echo \'hello\'"]);
+    }
+    */
 }
