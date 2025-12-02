@@ -49,12 +49,18 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
         buffer.clear();
     };
 
-    for c in prompt.chars() {
+    let mut chars = prompt.chars().peekable();
+    while let Some(c) = chars.next() {
         match quote {
             PromptQuote::Unquoted => match c {
-                ' ' => push(&mut buffer, &mut tokens),
+                ' ' | '\t' | '\n' => push(&mut buffer, &mut tokens),
                 '\'' => quote = PromptQuote::SingleQuoted,
                 '"' => quote = PromptQuote::DoubleQuoted,
+                '\\' => {
+                    if let Some(next_char) = chars.next() {
+                        buffer.push(next_char)
+                    }
+                }
                 _ => buffer.push(c),
             },
             PromptQuote::SingleQuoted => match c {
@@ -63,6 +69,20 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
             },
             PromptQuote::DoubleQuoted => match c {
                 '"' => quote = PromptQuote::Unquoted,
+                '\\' => {
+                    if let Some(&next_ch) = chars.peek() {
+                        if matches!(next_ch, '\\' | '"' | '$' | '`' | '\n') {
+                            chars.next();
+                            if next_ch != '\n' {
+                                buffer.push(next_ch);
+                            }
+                        } else {
+                            buffer.push(c);
+                        }
+                    } else {
+                        buffer.push(c);
+                    }
+                }
                 _ => buffer.push(c),
             },
         }
@@ -266,7 +286,7 @@ mod tests {
             vec!["echo", "shell's test"]
         );
     }
-    /*
+
     #[test]
     fn test_backslash1() {
         assert_eq!(
@@ -285,17 +305,22 @@ mod tests {
 
     #[test]
     fn test_backslash3() {
-        assert_eq!(parse_prompt("echo test\nexample"), vec!["testnexample"]);
+        assert_eq!(
+            parse_prompt("echo test\nexample"),
+            vec!["echo", "testnexample"]
+        );
     }
 
     #[test]
     fn test_backslash4() {
-        assert_eq!(parse_prompt("echo hello\\world"), vec!["hello\\world"]);
+        assert_eq!(
+            parse_prompt("echo hello\\\\world"),
+            vec!["echo", "hello\\world"]
+        );
     }
 
     #[test]
     fn test_backslash5() {
-        assert_eq!(parse_prompt("echo \'hello\'"), vec!["echo \'hello\'"]);
+        assert_eq!(parse_prompt("echo \'hello\'"), vec!["echo", "\'hello\'"]);
     }
-    */
 }
