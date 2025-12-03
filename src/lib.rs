@@ -1,11 +1,15 @@
+mod output;
+
 use anyhow::{Result, anyhow};
 use is_executable::IsExecutable;
-use std::fs;
+use std::fs::{self};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command as CmdCommand, Stdio};
 use std::{env, process};
 use strum_macros::{EnumIter, EnumString};
+
+use crate::output::{FileOutput, Output, StdOutput};
 
 pub enum PromptQuote {
     Unquoted,
@@ -92,59 +96,87 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
     tokens
 }
 
-pub fn parse_command(args: Vec<String>) -> Result<Command> {
-    let (name, args) = args.split_first().ok_or_else(|| anyhow!("Empty command"))?;
+fn extract_redirect(args: &[String]) -> Result<(Vec<String>, Box<dyn Output>)> {
+    let redirect_ops = [">", "1>"];
+
+    if let Some(pos) = args.iter().position(|a| redirect_ops.contains(&a.as_str())) {
+        let path = args
+            .get(pos + 1)
+            .ok_or_else(|| anyhow!("redirect path is missing"))?;
+
+        let filtered: Vec<String> = args[..pos]
+            .iter()
+            .chain(args.get(pos + 2..).unwrap_or_default())
+            .cloned()
+            .collect();
+
+        Ok((filtered, Box::new(FileOutput::new(path, true)?)))
+    } else {
+        Ok((args.to_vec(), Box::new(StdOutput::new())))
+    }
+}
+
+pub fn parse_command(args: Vec<String>) -> Result<(Command, Box<dyn Output>)> {
+    let (name, rest) = args.split_first().ok_or_else(|| anyhow!("Empty command"))?;
+    let (args, output) = extract_redirect(rest)?;
 
     let arg_str = args.join(" ");
 
-    match name.parse::<CommandKind>() {
-        Ok(CommandKind::Exit) => Ok(Command::Exit),
-        Ok(CommandKind::Echo) => Ok(Command::Echo(arg_str)),
-        Ok(CommandKind::Type) => Ok(Command::Type(arg_str)),
-        Ok(CommandKind::Pwd) => Ok(Command::Pwd),
-        Ok(CommandKind::Cd) => Ok(Command::Cd(arg_str)),
-        Err(_) => Ok(Command::Exec {
+    let command = match name.parse::<CommandKind>() {
+        Ok(CommandKind::Exit) => Command::Exit,
+        Ok(CommandKind::Echo) => Command::Echo(arg_str),
+        Ok(CommandKind::Type) => Command::Type(arg_str),
+        Ok(CommandKind::Pwd) => Command::Pwd,
+        Ok(CommandKind::Cd) => Command::Cd(arg_str),
+        Err(_) => Command::Exec {
             command: name.to_string(),
             args: args.iter().map(|s| s.to_string()).collect(),
-        }),
-    }
+        },
+    };
+
+    Ok((command, output))
 }
 
-pub fn handle_command(command: Command) {
-    match command {
+pub fn handle_command<T: Output>(command: Command, mut output: T) {
+    let result: Result<()> = match command {
         Command::Exit => exit(),
-        Command::Echo(text) => echo(&text),
-        Command::Type(command) => r#type(&command),
-        Command::Exec { command, args } => try_run(|| exec(&command, &args)),
-        Command::Pwd => pwd(),
-        Command::Cd(path) => try_run(|| cd(&path)),
+        Command::Echo(text) => echo(&text, output),
+        Command::Type(command) => r#type(&command, output),
+        Command::Exec { command, args } => exec(&command, &args, output),
+        Command::Pwd => pwd(output),
+        Command::Cd(path) => cd(&path),
+    };
+
+    if let Err(e) = result {
+        output.print(&e.to_string());
     }
 }
 
-fn exit() {
+fn exit() -> Result<()> {
     process::exit(0)
 }
 
-fn echo(text: &str) {
-    println!("{text}")
+fn echo<T: Output>(text: &str, mut output: T) -> Result<()> {
+    Ok(output.print(text))
 }
 
-fn r#type(command: &str) {
+fn r#type<T: Output>(command: &str, mut output: T) -> Result<()> {
     if is_built_in(command) {
-        println!("{} is a shell builtin", command);
+        output.print(format!("{} is a shell builtin", command).as_str());
     } else if let Some(path) = find_in_path(command) {
-        println!("{command} is {}", path.display());
+        output.print(format!("{command} is {}", path.display()).as_str());
     } else {
-        println!("{}: not found", command);
+        output.print(format!("{}: not found", command).as_str());
     }
+    Ok(())
 }
 
-fn try_run<F>(f: F)
+fn try_run<F, T: Output>(f: F, mut output: T)
 where
     F: FnOnce() -> Result<()>,
 {
     if let Err(e) = f() {
-        println!("{e}");
+        output.print(format!("{e}").as_str());
     }
 }
 
@@ -165,7 +197,7 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
     })
 }
 
-fn exec(command: &str, args: &[String]) -> Result<()> {
+fn exec<T: Output>(command: &str, args: &[String], mut output: T) -> Result<()> {
     find_in_path(command).ok_or(anyhow!("{command}: command not found"))?;
 
     let mut child = CmdCommand::new(command)
@@ -176,7 +208,7 @@ fn exec(command: &str, args: &[String]) -> Result<()> {
 
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            println!("{line}");
+            output.print(&line);
         }
     }
 
@@ -184,12 +216,11 @@ fn exec(command: &str, args: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn pwd() {
-    if let Ok(dir) = env::current_dir() {
-        if let Ok(absolute) = fs::canonicalize(dir) {
-            println!("{}", absolute.display())
-        }
-    }
+fn pwd<T: Output>(mut output: T) -> Result<()> {
+    let dir = env::current_dir()?;
+    let absolute = fs::canonicalize(dir)?;
+    output.print(format!("{}", absolute.display()).as_str());
+    Ok(())
 }
 
 fn cd(path: &str) -> Result<()> {
