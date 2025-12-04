@@ -118,7 +118,7 @@ fn extract_redirects(args: &[String]) -> Result<(Vec<String>, Box<dyn Output>, B
                 let file = FileOutput::new(path, false)?;
                 stderr = Box::new(file);
             }
-            ">>" => {
+            ">>" | "1>>" => {
                 let path = iter
                     .next()
                     .ok_or_else(|| anyhow!("redirect path missing"))?;
