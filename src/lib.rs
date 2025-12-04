@@ -99,7 +99,7 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
 fn extract_redirects(args: &[String]) -> Result<(Vec<String>, Box<dyn Output>, Box<dyn Output>)> {
     let mut filtered = Vec::new();
     let mut stdout: Box<dyn Output> = Box::new(StdOutput::new());
-    let stderr: Box<dyn Output> = Box::new(StdErrOutput::new());
+    let mut stderr: Box<dyn Output> = Box::new(StdErrOutput::new());
 
     let mut iter = args.iter().peekable();
     while let Some(arg) = iter.next() {
@@ -110,6 +110,13 @@ fn extract_redirects(args: &[String]) -> Result<(Vec<String>, Box<dyn Output>, B
                     .ok_or_else(|| anyhow!("redirect path missing"))?;
                 let file = FileOutput::new(path, false)?;
                 stdout = Box::new(file);
+            }
+            "2>" => {
+                let path = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("redirect path missing"))?;
+                let file = FileOutput::new(path, false)?;
+                stderr = Box::new(file);
             }
             _ => filtered.push(arg.clone()),
         }
@@ -225,8 +232,8 @@ fn pwd(output: &mut dyn Output) -> Result<()> {
 
 fn cd(path: &str) -> Result<()> {
     let target = match path {
-        "" | "~" => env::home_dir(),
-        p if p.starts_with("~/") => env::home_dir().map(|home| home.join(&p[2..])),
+        "" | "~" => dirs::home_dir(),
+        p if p.starts_with("~/") => dirs::home_dir().map(|home| home.join(&p[2..])),
         p => Some(PathBuf::from(p)),
     };
 
@@ -265,6 +272,13 @@ mod tests {
         let args = vec!["echo".into(), "hello".into(), ">".into(), "out.txt".into()];
         let (filtered, _, _) = extract_redirects(&args[1..]).unwrap();
         assert_eq!(filtered, vec!["hello"]);
+    }
+
+    #[test]
+    fn test_redirect_stderr() {
+        let args = vec!["cmd".into(), "2>".into(), "err.txt".into()];
+        let (filtered, _, _) = extract_redirects(&args[1..]).unwrap();
+        assert!(filtered.is_empty());
     }
 
     #[test]
