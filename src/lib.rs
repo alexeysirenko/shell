@@ -2,14 +2,14 @@ mod output;
 
 use anyhow::{Result, anyhow};
 use is_executable::IsExecutable;
-use std::fs::{self};
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command as CmdCommand, Stdio};
 use std::{env, process};
 use strum_macros::{EnumIter, EnumString};
 
-use crate::output::{FileOutput, Output, StdOutput};
+pub use crate::output::{FileOutput, Output, OutputStreams, StdErrOutput, StdOutput};
 
 pub enum PromptQuote {
     Unquoted,
@@ -96,29 +96,31 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
     tokens
 }
 
-fn extract_redirect(args: &[String]) -> Result<(Vec<String>, Box<dyn Output>)> {
-    let redirect_ops = [">", "1>"];
+fn extract_redirects(args: &[String]) -> Result<(Vec<String>, Box<dyn Output>, Box<dyn Output>)> {
+    let mut filtered = Vec::new();
+    let mut stdout: Box<dyn Output> = Box::new(StdOutput::new());
+    let stderr: Box<dyn Output> = Box::new(StdErrOutput::new());
 
-    if let Some(pos) = args.iter().position(|a| redirect_ops.contains(&a.as_str())) {
-        let path = args
-            .get(pos + 1)
-            .ok_or_else(|| anyhow!("redirect path is missing"))?;
-
-        let filtered: Vec<String> = args[..pos]
-            .iter()
-            .chain(args.get(pos + 2..).unwrap_or_default())
-            .cloned()
-            .collect();
-
-        Ok((filtered, Box::new(FileOutput::new(path, true)?)))
-    } else {
-        Ok((args.to_vec(), Box::new(StdOutput::new())))
+    let mut iter = args.iter().peekable();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            ">" | "1>" => {
+                let path = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("redirect path missing"))?;
+                let file = FileOutput::new(path, false)?;
+                stdout = Box::new(file);
+            }
+            _ => filtered.push(arg.clone()),
+        }
     }
+
+    Ok((filtered, stdout, stderr))
 }
 
-pub fn parse_command(args: Vec<String>) -> Result<(Command, Box<dyn Output>)> {
+pub fn parse_command(args: Vec<String>) -> Result<(Command, OutputStreams)> {
     let (name, rest) = args.split_first().ok_or_else(|| anyhow!("Empty command"))?;
-    let (args, output) = extract_redirect(rest)?;
+    let (args, stdout, stderr) = extract_redirects(rest)?;
 
     let arg_str = args.join(" ");
 
@@ -130,25 +132,25 @@ pub fn parse_command(args: Vec<String>) -> Result<(Command, Box<dyn Output>)> {
         Ok(CommandKind::Cd) => Command::Cd(arg_str),
         Err(_) => Command::Exec {
             command: name.to_string(),
-            args: args.iter().map(|s| s.to_string()).collect(),
+            args,
         },
     };
 
-    Ok((command, output))
+    Ok((command, OutputStreams::new(stdout, stderr)))
 }
 
-pub fn handle_command<T: Output>(command: Command, mut output: T) {
+pub fn handle_command(command: Command, streams: &mut OutputStreams) {
     let result: Result<()> = match command {
         Command::Exit => exit(),
-        Command::Echo(text) => echo(&text, output),
-        Command::Type(command) => r#type(&command, output),
-        Command::Exec { command, args } => exec(&command, &args, output),
-        Command::Pwd => pwd(output),
+        Command::Echo(text) => echo(&text, &mut *streams.stdout),
+        Command::Type(command) => r#type(&command, &mut *streams.stdout),
+        Command::Exec { command, args } => exec(&command, &args, streams),
+        Command::Pwd => pwd(&mut *streams.stdout),
         Command::Cd(path) => cd(&path),
     };
 
     if let Err(e) = result {
-        output.print(&e.to_string());
+        streams.stderr.print(&e.to_string());
     }
 }
 
@@ -156,28 +158,20 @@ fn exit() -> Result<()> {
     process::exit(0)
 }
 
-fn echo<T: Output>(text: &str, mut output: T) -> Result<()> {
-    Ok(output.print(text))
-}
-
-fn r#type<T: Output>(command: &str, mut output: T) -> Result<()> {
-    if is_built_in(command) {
-        output.print(format!("{} is a shell builtin", command).as_str());
-    } else if let Some(path) = find_in_path(command) {
-        output.print(format!("{command} is {}", path.display()).as_str());
-    } else {
-        output.print(format!("{}: not found", command).as_str());
-    }
+fn echo(text: &str, output: &mut dyn Output) -> Result<()> {
+    output.print(text);
     Ok(())
 }
 
-fn try_run<F, T: Output>(f: F, mut output: T)
-where
-    F: FnOnce() -> Result<()>,
-{
-    if let Err(e) = f() {
-        output.print(format!("{e}").as_str());
+fn r#type(command: &str, output: &mut dyn Output) -> Result<()> {
+    if is_built_in(command) {
+        output.print(&format!("{} is a shell builtin", command));
+    } else if let Some(path) = find_in_path(command) {
+        output.print(&format!("{} is {}", command, path.display()));
+    } else {
+        output.print(&format!("{}: not found", command));
     }
+    Ok(())
 }
 
 fn is_built_in(command: &str) -> bool {
@@ -197,29 +191,35 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
     })
 }
 
-fn exec<T: Output>(command: &str, args: &[String], mut output: T) -> Result<()> {
-    find_in_path(command).ok_or(anyhow!("{command}: command not found"))?;
+fn exec(command: &str, args: &[String], streams: &mut OutputStreams) -> Result<()> {
+    find_in_path(command).ok_or_else(|| anyhow!("{}: command not found", command))?;
 
     let mut child = CmdCommand::new(command)
         .args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .spawn()?;
 
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            output.print(&line);
+            streams.stdout.print(&line);
         }
     }
 
-    let _code = child.wait()?;
+    if let Some(stderr) = child.stderr.take() {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            streams.stderr.print(&line);
+        }
+    }
+
+    child.wait()?;
     Ok(())
 }
 
-fn pwd<T: Output>(mut output: T) -> Result<()> {
+fn pwd(output: &mut dyn Output) -> Result<()> {
     let dir = env::current_dir()?;
     let absolute = fs::canonicalize(dir)?;
-    output.print(format!("{}", absolute.display()).as_str());
+    output.print(&format!("{}", absolute.display()));
     Ok(())
 }
 
@@ -232,9 +232,9 @@ fn cd(path: &str) -> Result<()> {
 
     match target {
         Some(t) => {
-            env::set_current_dir(t).map_err(|_| anyhow!("cd: {path}: No such file or directory"))
+            env::set_current_dir(t).map_err(|_| anyhow!("cd: {}: No such file or directory", path))
         }
-        None => Err(anyhow!("cd: {path}: No such file or directory")),
+        None => Err(anyhow!("cd: {}: No such file or directory", path)),
     }
 }
 
@@ -258,6 +258,13 @@ mod tests {
     #[test]
     fn test_multiple_spaces() {
         assert_eq!(parse_prompt("echo   hello"), vec!["echo", "hello"]);
+    }
+
+    #[test]
+    fn test_redirect_stdout() {
+        let args = vec!["echo".into(), "hello".into(), ">".into(), "out.txt".into()];
+        let (filtered, _, _) = extract_redirects(&args[1..]).unwrap();
+        assert_eq!(filtered, vec!["hello"]);
     }
 
     #[test]

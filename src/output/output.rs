@@ -1,5 +1,5 @@
-use anyhow::{Context, Result, anyhow};
-use std::fs::{self, File, OpenOptions};
+use anyhow::{Context, Result};
+use std::fs::{File, OpenOptions};
 use std::io::Write;
 
 pub trait Output {
@@ -20,6 +20,20 @@ impl Output for StdOutput {
     }
 }
 
+pub struct StdErrOutput;
+
+impl StdErrOutput {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Output for StdErrOutput {
+    fn print(&mut self, text: &str) {
+        eprintln!("{}", text);
+    }
+}
+
 pub struct FileOutput {
     file: File,
 }
@@ -35,10 +49,34 @@ impl FileOutput {
 
         Ok(Self { file })
     }
+
+    pub fn try_clone(&self) -> Result<Self> {
+        Ok(Self {
+            file: self.file.try_clone()?,
+        })
+    }
 }
 
 impl Output for FileOutput {
     fn print(&mut self, text: &str) {
         let _ = writeln!(self.file, "{}", text);
+    }
+}
+
+pub struct OutputStreams {
+    pub stdout: Box<dyn Output>,
+    pub stderr: Box<dyn Output>,
+}
+
+impl OutputStreams {
+    pub fn new(stdout: Box<dyn Output>, stderr: Box<dyn Output>) -> Self {
+        Self { stdout, stderr }
+    }
+
+    pub fn default() -> Self {
+        Self {
+            stdout: Box::new(StdOutput::new()),
+            stderr: Box::new(StdErrOutput::new()),
+        }
     }
 }
