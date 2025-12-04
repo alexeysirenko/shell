@@ -118,6 +118,13 @@ fn extract_redirects(args: &[String]) -> Result<(Vec<String>, Box<dyn Output>, B
                 let file = FileOutput::new(path, false)?;
                 stderr = Box::new(file);
             }
+            ">>" => {
+                let path = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("redirect path missing"))?;
+                let file = FileOutput::new(path, true)?;
+                stdout = Box::new(file);
+            }
             _ => filtered.push(arg.clone()),
         }
     }
