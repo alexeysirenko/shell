@@ -1,23 +1,38 @@
-use std::io::{self, Write, stdin};
+use codecrafters_shell::completer::ShellCompleter;
+use rustyline::error::ReadlineError;
+use rustyline::{CompletionType, Config, Editor};
 
 use codecrafters_shell::{handle_command, parse_command, parse_prompt};
 
 fn main() {
+    let config = Config::builder()
+        .completion_type(CompletionType::Circular)
+        .build();
+    let mut rl = Editor::with_config(config).unwrap();
+    rl.set_helper(Some(ShellCompleter::new()));
+
     loop {
-        print!("$ ");
-        io::stdout().flush().unwrap();
+        match rl.readline("$ ") {
+            Ok(line) => {
+                let prompt = line.trim();
+                if prompt.is_empty() {
+                    continue;
+                }
 
-        let mut prompt = String::new();
-        stdin().read_line(&mut prompt).unwrap();
-        let prompt = prompt.trim();
+                rl.add_history_entry(&line).ok();
 
-        if prompt.is_empty() {
-            continue;
-        }
-
-        match parse_command(parse_prompt(prompt)) {
-            Ok((command, mut streams)) => handle_command(command, &mut streams),
-            Err(_) => eprintln!("{}: command not found", prompt),
+                match parse_command(parse_prompt(prompt)) {
+                    Ok((command, mut streams)) => handle_command(command, &mut streams),
+                    Err(_) => eprintln!("{}: command not found", prompt),
+                }
+            }
+            Err(ReadlineError::Interrupted | ReadlineError::Eof) => {
+                break;
+            }
+            Err(err) => {
+                eprintln!("error: {:?}", err);
+                break;
+            }
         }
     }
 }

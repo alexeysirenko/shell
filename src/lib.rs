@@ -1,3 +1,4 @@
+pub mod completer;
 mod output;
 
 use anyhow::{Result, anyhow};
