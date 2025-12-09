@@ -1,5 +1,9 @@
 use rustyline::{
-    Helper, completion::{Completer, Pair}, highlight::Highlighter, hint::Hinter, validate::Validator
+    Helper,
+    completion::{Completer, Pair},
+    highlight::Highlighter,
+    hint::Hinter,
+    validate::Validator,
 };
 use strum::IntoEnumIterator;
 
@@ -43,29 +47,13 @@ impl Completer for ShellCompleter {
         Ok((word_start, matches))
     }
 }
-
 impl Hinter for ShellCompleter {
     type Hint = String;
 
-    fn hint(&self, line: &str, pos: usize, _ctx: &rustyline::Context<'_>) -> Option<Self::Hint> {
-        if pos < line.len() {
-            return None;
-        }
-
-        let word_start = line[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
-        let word = &line[word_start..pos];
-
-        if word.is_empty() {
-            return None;
-        }
-
-        Self::builtin_commands()
-            .into_iter()
-            .find(|cmd| cmd.starts_with(word) && cmd.len() > word.len())
-            .map(|cmd| cmd[word.len()..].to_string())
+    fn hint(&self, _line: &str, _pos: usize, _ctx: &rustyline::Context<'_>) -> Option<Self::Hint> {
+        None
     }
 }
-
 impl Highlighter for ShellCompleter {}
 impl Validator for ShellCompleter {}
 impl Helper for ShellCompleter {}
