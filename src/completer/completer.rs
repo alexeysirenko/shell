@@ -35,7 +35,7 @@ impl Completer for ShellCompleter {
             .filter(|cmd| cmd.starts_with(word))
             .map(|cmd| Pair {
                 display: cmd.clone(),
-                replacement: cmd.clone(),
+                replacement: format!("{} ", cmd),
             })
             .collect();
 
