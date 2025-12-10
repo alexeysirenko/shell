@@ -1,4 +1,5 @@
 pub mod completer;
+pub mod finder;
 mod output;
 
 use anyhow::{Result, anyhow};
@@ -8,6 +9,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command as CmdCommand, Stdio};
 use std::{env, process};
+use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, EnumString};
 
 pub use crate::output::{FileOutput, Output, OutputStreams, StdErrOutput, StdOutput};
@@ -40,6 +42,12 @@ pub enum Command {
     Exec { command: String, args: Vec<String> },
     Pwd,
     Cd(String),
+}
+
+pub fn builtin_commands() -> Vec<String> {
+    CommandKind::iter()
+        .map(|k| format!("{:?}", k).to_lowercase())
+        .collect()
 }
 
 pub fn parse_prompt(prompt: &str) -> Vec<String> {

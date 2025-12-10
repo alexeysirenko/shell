@@ -5,21 +5,15 @@ use rustyline::{
     hint::Hinter,
     validate::Validator,
 };
-use strum::IntoEnumIterator;
 
-use crate::CommandKind;
 
-pub struct ShellCompleter;
+pub struct ShellCompleter {
+    commands: Vec<String>,
+}
 
 impl ShellCompleter {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    fn builtin_commands() -> Vec<String> {
-        CommandKind::iter()
-            .map(|k| format!("{:?}", k).to_lowercase())
-            .collect()
+    pub fn new(commands: Vec<String>) -> Self {
+        Self { commands }
     }
 }
 
@@ -35,8 +29,9 @@ impl Completer for ShellCompleter {
         let word_start = line[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
         let word = &line[word_start..pos];
 
-        let matches: Vec<Pair> = Self::builtin_commands()
-            .into_iter()
+        let matches: Vec<Pair> = self
+            .commands
+            .iter()
             .filter(|cmd| cmd.starts_with(word))
             .map(|cmd| Pair {
                 display: cmd.clone(),

@@ -1,15 +1,30 @@
+use std::collections::HashSet;
+
 use codecrafters_shell::completer::ShellCompleter;
+use codecrafters_shell::finder::ExecutablesFinder;
 use rustyline::error::ReadlineError;
 use rustyline::{CompletionType, Config, Editor};
 
-use codecrafters_shell::{handle_command, parse_command, parse_prompt};
+use codecrafters_shell::{builtin_commands, handle_command, parse_command, parse_prompt};
 
 fn main() {
+    let path_executables = ExecutablesFinder::new().find_executables_in_path().unwrap();
+
+    println!("{:?}", path_executables);
+
+    let builtin_commands = builtin_commands();
+    let all_commands = path_executables
+        .into_iter()
+        .chain(builtin_commands)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<String>>();
+
     let config = Config::builder()
         .completion_type(CompletionType::Circular)
         .build();
     let mut rl = Editor::with_config(config).unwrap();
-    rl.set_helper(Some(ShellCompleter::new()));
+    rl.set_helper(Some(ShellCompleter::new(all_commands)));
 
     loop {
         match rl.readline("$ ") {
