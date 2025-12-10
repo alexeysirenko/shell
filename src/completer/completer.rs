@@ -6,13 +6,13 @@ use rustyline::{
     validate::Validator,
 };
 
-
 pub struct ShellCompleter {
     commands: Vec<String>,
 }
 
 impl ShellCompleter {
-    pub fn new(commands: Vec<String>) -> Self {
+    pub fn new(mut commands: Vec<String>) -> Self {
+        commands.sort();
         Self { commands }
     }
 }
@@ -35,7 +35,7 @@ impl Completer for ShellCompleter {
             .filter(|cmd| cmd.starts_with(word))
             .map(|cmd| Pair {
                 display: cmd.clone(),
-                replacement: format!("{} ", cmd),
+                replacement: cmd.clone(),
             })
             .collect();
 

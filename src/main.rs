@@ -19,7 +19,8 @@ fn main() {
         .collect::<Vec<String>>();
 
     let config = Config::builder()
-        .completion_type(CompletionType::Circular)
+        .completion_type(CompletionType::List)
+        .completion_prompt_limit(100)
         .build();
     let mut rl = Editor::with_config(config).unwrap();
     rl.set_helper(Some(ShellCompleter::new(all_commands)));
