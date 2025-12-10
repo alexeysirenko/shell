@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::{collections::HashSet, env, fs, path::Path};
 
 #[cfg(unix)]
