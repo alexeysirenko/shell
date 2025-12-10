@@ -10,8 +10,6 @@ use codecrafters_shell::{builtin_commands, handle_command, parse_command, parse_
 fn main() {
     let path_executables = ExecutablesFinder::new().find_executables_in_path().unwrap();
 
-    println!("{:?}", path_executables);
-
     let builtin_commands = builtin_commands();
     let all_commands = path_executables
         .into_iter()
