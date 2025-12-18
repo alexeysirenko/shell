@@ -157,7 +157,7 @@ fn exec_piped(
         .map(|o| o.is_redirected())
         .unwrap_or(false);
 
-    let stdout_cfg = if is_stdout_redirected {
+    let stdout_cfg = if is_final && !is_stdout_redirected {
         Stdio::inherit()
     } else {
         Stdio::piped()
