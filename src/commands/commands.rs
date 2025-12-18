@@ -3,6 +3,7 @@ use is_executable::IsExecutable;
 use os_pipe::{PipeReader, pipe};
 use std::fs;
 use std::io::Write;
+use std::io::{BufRead, BufReader};
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::IntoRawFd;
 use std::path::PathBuf;
@@ -58,6 +59,7 @@ pub fn execute_command(
     command: Command,
     input: Option<PipeReader>,
     final_output: Option<&mut dyn Output>,
+    stderr_output: &mut dyn Output,
 ) -> Result<Option<PipeReader>> {
     match command {
         Command::Exit => process::exit(0),
@@ -106,9 +108,13 @@ pub fn execute_command(
                 pipe_string(text)
             }
         }
-        Command::Exec { command, args } => {
-            exec_piped(&command, &args, input, final_output.is_some())
-        }
+        Command::Exec { command, args } => exec_piped(
+            &command,
+            &args,
+            input,
+            final_output.is_some(),
+            stderr_output,
+        ),
     }
 }
 
@@ -132,6 +138,7 @@ fn exec_piped(
     args: &[String],
     input: Option<PipeReader>,
     is_final: bool,
+    stderr_output: &mut dyn Output,
 ) -> Result<Option<PipeReader>> {
     find_in_path(command).ok_or_else(|| anyhow!("{}: command not found", command))?;
 
@@ -146,12 +153,28 @@ fn exec_piped(
         Stdio::piped()
     };
 
+    let is_stderr_redirected = stderr_output.is_redirected();
+    let stderr_cfg = if is_stderr_redirected {
+        Stdio::piped()
+    } else {
+        Stdio::inherit()
+    };
+
     let mut child = CmdCommand::new(command)
         .args(args)
         .stdin(stdin_cfg)
         .stdout(stdout_cfg)
-        .stderr(Stdio::inherit())
+        .stderr(stderr_cfg)
         .spawn()?;
+
+    // Handle stderr if redirected
+    if is_stderr_redirected {
+        if let Some(stderr) = child.stderr.take() {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                stderr_output.print(&line);
+            }
+        }
+    }
 
     if is_final {
         child.wait()?;

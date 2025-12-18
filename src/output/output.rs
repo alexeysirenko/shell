@@ -4,6 +4,9 @@ use std::io::Write;
 
 pub trait Output {
     fn print(&mut self, text: &str);
+    fn is_redirected(&self) -> bool {
+        false
+    }
 }
 
 pub struct StdOutput;
@@ -60,6 +63,10 @@ impl FileOutput {
 impl Output for FileOutput {
     fn print(&mut self, text: &str) {
         let _ = writeln!(self.file, "{}", text);
+    }
+
+    fn is_redirected(&self) -> bool {
+        true
     }
 }
 
