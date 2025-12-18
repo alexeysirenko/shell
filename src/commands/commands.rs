@@ -58,7 +58,7 @@ pub fn builtin_commands() -> Vec<String> {
 pub fn execute_command(
     command: Command,
     input: Option<PipeReader>,
-    final_output: Option<&mut dyn Output>,
+    stdout_output: Option<&mut dyn Output>,
     stderr_output: &mut dyn Output,
 ) -> Result<Option<PipeReader>> {
     match command {
@@ -76,7 +76,7 @@ pub fn execute_command(
             } else {
                 text
             };
-            if let Some(out) = final_output {
+            if let Some(out) = stdout_output {
                 out.print(&output);
                 Ok(None)
             } else {
@@ -86,7 +86,7 @@ pub fn execute_command(
         Command::Pwd => {
             let dir = fs::canonicalize(env::current_dir()?)?;
             let text = dir.display().to_string();
-            if let Some(out) = final_output {
+            if let Some(out) = stdout_output {
                 out.print(&text);
                 Ok(None)
             } else {
@@ -101,20 +101,24 @@ pub fn execute_command(
             } else {
                 format!("{}: not found", cmd)
             };
-            if let Some(out) = final_output {
+            if let Some(out) = stdout_output {
                 out.print(&text);
                 Ok(None)
             } else {
                 pipe_string(text)
             }
         }
-        Command::Exec { command, args } => exec_piped(
-            &command,
-            &args,
-            input,
-            final_output.is_some(),
-            stderr_output,
-        ),
+        Command::Exec { command, args } => {
+            let is_final = stdout_output.is_some();
+            exec_piped(
+                &command,
+                &args,
+                input,
+                is_final,
+                stdout_output,
+                stderr_output,
+            )
+        }
     }
 }
 
@@ -138,6 +142,7 @@ fn exec_piped(
     args: &[String],
     input: Option<PipeReader>,
     is_final: bool,
+    stdout_output: Option<&mut dyn Output>,
     stderr_output: &mut dyn Output,
 ) -> Result<Option<PipeReader>> {
     find_in_path(command).ok_or_else(|| anyhow!("{}: command not found", command))?;
@@ -147,7 +152,12 @@ fn exec_piped(
         None => Stdio::inherit(),
     };
 
-    let stdout_cfg = if is_final {
+    let is_stdout_redirected = stdout_output
+        .as_ref()
+        .map(|o| o.is_redirected())
+        .unwrap_or(false);
+
+    let stdout_cfg = if is_stdout_redirected {
         Stdio::inherit()
     } else {
         Stdio::piped()
@@ -176,7 +186,17 @@ fn exec_piped(
         }
     }
 
-    if is_final {
+    if is_final && is_stdout_redirected {
+        if let Some(stdout) = child.stdout.take() {
+            if let Some(out) = stdout_output {
+                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                    out.print(&line);
+                }
+            }
+        }
+        child.wait()?;
+        Ok(None)
+    } else if is_final {
         child.wait()?;
         Ok(None)
     } else {
