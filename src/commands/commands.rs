@@ -28,9 +28,15 @@ pub enum CommandKind {
 #[derive(Debug)]
 pub enum Command {
     Exit,
-    Echo(String),
+    Echo {
+        text: String,
+        interpret_escapes: bool,
+    },
     Type(String),
-    Exec { command: String, args: Vec<String> },
+    Exec {
+        command: String,
+        args: Vec<String>,
+    },
     Pwd,
     Cd(String),
 }
@@ -52,7 +58,17 @@ pub fn execute_command(command: Command, input: Option<PipeReader>) -> Result<Op
             cd(&path)?;
             Ok(None)
         }
-        Command::Echo(text) => pipe_string(text),
+        Command::Echo {
+            text,
+            interpret_escapes,
+        } => {
+            let output = if interpret_escapes {
+                interpret_escape_sequences(&text)
+            } else {
+                text
+            };
+            pipe_string(output)
+        }
         Command::Pwd => {
             let dir = fs::canonicalize(env::current_dir()?)?;
             pipe_string(dir.display().to_string())
@@ -139,4 +155,34 @@ fn pipe_string(text: String) -> Result<Option<PipeReader>> {
         let _ = writeln!(writer, "{}", text);
     });
     Ok(Some(reader))
+}
+
+fn interpret_escape_sequences(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('a') => result.push('\x07'),
+                Some('b') => result.push('\x08'),
+                Some('f') => result.push('\x0C'),
+                Some('v') => result.push('\x0B'),
+                Some('e') => result.push('\x1B'),
+                Some(other) => {
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }

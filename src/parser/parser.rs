@@ -152,7 +152,17 @@ fn parse_command(args: Vec<String>) -> Result<(Command, OutputStreams)> {
 
     let command = match name.parse::<CommandKind>() {
         Ok(CommandKind::Exit) => Command::Exit,
-        Ok(CommandKind::Echo) => Command::Echo(arg_str),
+        Ok(CommandKind::Echo) => {
+            let (interpret_escapes, text) = if args.first().map(|arg| arg.as_str()) == Some("-e") {
+                (true, args[1..].join(" "))
+            } else {
+                (false, arg_str)
+            };
+            Command::Echo {
+                text,
+                interpret_escapes,
+            }
+        }
         Ok(CommandKind::Type) => Command::Type(arg_str),
         Ok(CommandKind::Pwd) => Command::Pwd,
         Ok(CommandKind::Cd) => Command::Cd(arg_str),
