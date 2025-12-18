@@ -3,13 +3,16 @@ use is_executable::IsExecutable;
 use os_pipe::{PipeReader, pipe};
 use std::fs;
 use std::io::Write;
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::IntoRawFd;
 use std::path::PathBuf;
 use std::process::{Command as CmdCommand, Stdio};
 use std::thread;
 use std::{env, process};
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, EnumString};
+
+use crate::Output;
 
 #[derive(Debug, EnumString, EnumIter, PartialEq)]
 pub enum CommandKind {
@@ -51,7 +54,11 @@ pub fn builtin_commands() -> Vec<String> {
         .collect()
 }
 
-pub fn execute_command(command: Command, input: Option<PipeReader>) -> Result<Option<PipeReader>> {
+pub fn execute_command(
+    command: Command,
+    input: Option<PipeReader>,
+    final_output: Option<&mut dyn Output>,
+) -> Result<Option<PipeReader>> {
     match command {
         Command::Exit => process::exit(0),
         Command::Cd(path) => {
@@ -67,11 +74,22 @@ pub fn execute_command(command: Command, input: Option<PipeReader>) -> Result<Op
             } else {
                 text
             };
-            pipe_string(output)
+            if let Some(out) = final_output {
+                out.print(&output);
+                Ok(None)
+            } else {
+                pipe_string(output)
+            }
         }
         Command::Pwd => {
             let dir = fs::canonicalize(env::current_dir()?)?;
-            pipe_string(dir.display().to_string())
+            let text = dir.display().to_string();
+            if let Some(out) = final_output {
+                out.print(&text);
+                Ok(None)
+            } else {
+                pipe_string(text)
+            }
         }
         Command::Type(cmd) => {
             let text = if is_built_in(&cmd) {
@@ -81,9 +99,16 @@ pub fn execute_command(command: Command, input: Option<PipeReader>) -> Result<Op
             } else {
                 format!("{}: not found", cmd)
             };
-            pipe_string(text)
+            if let Some(out) = final_output {
+                out.print(&text);
+                Ok(None)
+            } else {
+                pipe_string(text)
+            }
         }
-        Command::Exec { command, args } => exec_piped(&command, &args, input),
+        Command::Exec { command, args } => {
+            exec_piped(&command, &args, input, final_output.is_some())
+        }
     }
 }
 
@@ -106,34 +131,41 @@ fn exec_piped(
     command: &str,
     args: &[String],
     input: Option<PipeReader>,
+    is_final: bool,
 ) -> Result<Option<PipeReader>> {
     find_in_path(command).ok_or_else(|| anyhow!("{}: command not found", command))?;
 
-    let stdin_cfg = match &input {
-        Some(reader) => unsafe { Stdio::from_raw_fd(reader.as_raw_fd()) },
+    let stdin_cfg = match input {
+        Some(reader) => unsafe { Stdio::from_raw_fd(reader.into_raw_fd()) },
         None => Stdio::inherit(),
+    };
+
+    let stdout_cfg = if is_final {
+        Stdio::inherit()
+    } else {
+        Stdio::piped()
     };
 
     let mut child = CmdCommand::new(command)
         .args(args)
         .stdin(stdin_cfg)
-        .stdout(Stdio::piped())
+        .stdout(stdout_cfg)
         .stderr(Stdio::inherit())
         .spawn()?;
 
-    drop(input);
+    if is_final {
+        child.wait()?;
+        Ok(None)
+    } else {
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let reader = unsafe { PipeReader::from_raw_fd(stdout.into_raw_fd()) };
 
-    let stdout = child.stdout.take().expect("stdout was piped");
-    let (reader, mut writer) = pipe()?;
+        thread::spawn(move || {
+            child.wait().ok();
+        });
 
-    thread::spawn(move || {
-        let mut stdout = stdout;
-        std::io::copy(&mut stdout, &mut writer).ok();
-        drop(writer);
-        child.wait().ok();
-    });
-
-    Ok(Some(reader))
+        Ok(Some(reader))
+    }
 }
 
 fn find_in_path(executable: &str) -> Option<PathBuf> {
