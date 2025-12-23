@@ -68,7 +68,13 @@ pub fn execute_command(
     match command {
         Command::Exit => process::exit(0),
         Command::History => {
-            let line = history.items.join("\n");
+            let line = history
+                .items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| format!("    {} {}", i + 1, item))
+                .collect::<Vec<String>>()
+                .join("\n");
             if let Some(out) = stdout_output {
                 out.print(&line);
                 Ok(None)
