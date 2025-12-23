@@ -6,7 +6,7 @@ use codecrafters_shell::parser::{parse_pipeline, parse_prompt};
 use rustyline::error::ReadlineError;
 use rustyline::{CompletionType, Config, Editor};
 
-use codecrafters_shell::{builtin_commands, handle_pipeline};
+use codecrafters_shell::{History, builtin_commands, handle_pipeline};
 
 fn main() {
     let path_executables = ExecutablesFinder::new().find_executables_in_path().unwrap();
@@ -26,6 +26,7 @@ fn main() {
     let mut rl = Editor::with_config(config).unwrap();
     rl.set_helper(Some(ShellCompleter::new(all_commands)));
 
+    let mut history = History::new();
     loop {
         match rl.readline("$ ") {
             Ok(line) => {
@@ -34,10 +35,11 @@ fn main() {
                     continue;
                 }
 
-                rl.add_history_entry(&line).ok();
+                // rl.add_history_entry(&line).ok();
+                history.add_history_item(&line).ok();
 
                 match parse_pipeline(parse_prompt(prompt)) {
-                    Ok((command, mut streams)) => handle_pipeline(command, &mut streams),
+                    Ok((command, mut streams)) => handle_pipeline(command, &mut streams, &history),
                     Err(_) => eprintln!("{}: command not found", prompt),
                 }
             }

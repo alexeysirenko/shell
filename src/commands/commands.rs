@@ -13,7 +13,7 @@ use std::{env, process};
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, EnumString};
 
-use crate::Output;
+use crate::{History, Output};
 
 #[derive(Debug, EnumString, EnumIter, PartialEq)]
 pub enum CommandKind {
@@ -27,6 +27,8 @@ pub enum CommandKind {
     Pwd,
     #[strum(serialize = "cd")]
     Cd,
+    #[strum(serialize = "history")]
+    History,
 }
 
 #[derive(Debug)]
@@ -43,6 +45,7 @@ pub enum Command {
     },
     Pwd,
     Cd(String),
+    History,
 }
 
 fn is_built_in(command: &str) -> bool {
@@ -60,9 +63,19 @@ pub fn execute_command(
     input: Option<PipeReader>,
     stdout_output: Option<&mut dyn Output>,
     stderr_output: &mut dyn Output,
+    history: &History,
 ) -> Result<Option<PipeReader>> {
     match command {
         Command::Exit => process::exit(0),
+        Command::History => {
+            let line = history.items.join("\n");
+            if let Some(out) = stdout_output {
+                out.print(&line);
+                Ok(None)
+            } else {
+                pipe_string(line)
+            }
+        }
         Command::Cd(path) => {
             cd(&path)?;
             Ok(None)

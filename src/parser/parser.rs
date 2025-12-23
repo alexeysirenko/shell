@@ -166,6 +166,7 @@ fn parse_command(args: Vec<String>) -> Result<(Command, OutputStreams)> {
         Ok(CommandKind::Type) => Command::Type(arg_str),
         Ok(CommandKind::Pwd) => Command::Pwd,
         Ok(CommandKind::Cd) => Command::Cd(arg_str),
+        Ok(CommandKind::History) => Command::History,
         Err(_) => Command::Exec {
             command: name.to_string(),
             args,
