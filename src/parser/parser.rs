@@ -166,7 +166,16 @@ fn parse_command(args: Vec<String>) -> Result<(Command, OutputStreams)> {
         Ok(CommandKind::Type) => Command::Type(arg_str),
         Ok(CommandKind::Pwd) => Command::Pwd,
         Ok(CommandKind::Cd) => Command::Cd(arg_str),
-        Ok(CommandKind::History) => Command::History,
+        Ok(CommandKind::History) => {
+            let lines_count = match args.first() {
+                None => None,
+                Some(s) => Some(
+                    s.parse::<u32>()
+                        .map_err(|_| anyhow!("history: numeric argument required"))?,
+                ),
+            };
+            Command::History { lines_count }
+        }
         Err(_) => Command::Exec {
             command: name.to_string(),
             args,

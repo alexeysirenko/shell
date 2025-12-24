@@ -45,7 +45,9 @@ pub enum Command {
     },
     Pwd,
     Cd(String),
-    History,
+    History {
+        lines_count: Option<u32>,
+    },
 }
 
 fn is_built_in(command: &str) -> bool {
@@ -67,10 +69,11 @@ pub fn execute_command(
 ) -> Result<Option<PipeReader>> {
     match command {
         Command::Exit => process::exit(0),
-        Command::History => {
+        Command::History { lines_count } => {
             let line = history
                 .items
                 .iter()
+                .take(lines_count.unwrap_or(u32::MAX) as usize)
                 .enumerate()
                 .map(|(i, item)| format!("    {} {}", i + 1, item))
                 .collect::<Vec<String>>()
