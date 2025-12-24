@@ -73,10 +73,10 @@ pub fn execute_command(
             let line = history
                 .items
                 .iter()
+                .enumerate()
                 .rev()
                 .take(lines_count.unwrap_or(u32::MAX) as usize)
                 .rev()
-                .enumerate()
                 .map(|(i, item)| format!("    {}  {}", i + 1, item))
                 .collect::<Vec<String>>()
                 .join("\n");
