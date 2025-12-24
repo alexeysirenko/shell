@@ -75,7 +75,7 @@ pub fn execute_command(
                 .iter()
                 .take(lines_count.unwrap_or(u32::MAX) as usize)
                 .enumerate()
-                .map(|(i, item)| format!("    {} {}", i + 1, item))
+                .map(|(i, item)| format!("    {}  {}", i + 1, item))
                 .collect::<Vec<String>>()
                 .join("\n");
             if let Some(out) = stdout_output {
