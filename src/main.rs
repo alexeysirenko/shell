@@ -40,7 +40,7 @@ fn main() {
 
                 match parse_pipeline(parse_prompt(prompt)) {
                     Ok((command, mut streams)) => handle_pipeline(command, &mut streams, &history),
-                    Err(_) => eprintln!("{}: command not found", prompt),
+                    Err(error) => eprintln!("{}: {}", prompt, error),
                 }
             }
             Err(ReadlineError::Interrupted | ReadlineError::Eof) => {
