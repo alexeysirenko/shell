@@ -1,35 +1,38 @@
-[![progress-banner](https://backend.codecrafters.io/progress/shell/2f1e93fc-b87a-4aba-9134-0f433de975d5)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# Rust Shell Implementation
 
-This is a starting point for Rust solutions to the
-["Build Your Own Shell" Challenge](https://app.codecrafters.io/courses/shell/overview).
+A Unix shell implementation in Rust, supporting basic commands, pipes, and redirections.
 
-In this challenge, you'll build your own POSIX compliant shell that's capable of
-interpreting shell commands, running external programs and builtin commands like
-cd, pwd, echo and more. Along the way, you'll learn about shell command parsing,
-REPLs, builtin commands, and more.
+## Features
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+- Execute system commands
+- Piping between commands (`ls | grep txt`)
+- I/O redirection (`cat file.txt > output.txt`)
+- Built-in commands (cd, exit)
+- Command history
 
-# Passing the first stage
+## Tech Stack
 
-The entry point for your `shell` implementation is in `src/main.rs`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
+- **Rust 1.75+**
+- **std::process** for command execution
+- **std::fs** for file operations
 
-```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
+## Usage
+
+```bash
+cargo run
+
+# In the shell:
+$ ls -la
+$ echo "hello" | wc -l
+$ cat file.txt > output.txt
+$ cd /tmp
+$ exit
 ```
 
-Time to move on to the next stage!
+## Implementation Highlights
 
-# Stage 2 & beyond
-
-Note: This section is for stages 2 and beyond.
-
-1. Ensure you have `cargo (1.91)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.rs`. This command compiles your Rust project, so it might be slow
-   the first time you run it. Subsequent runs will be fast.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+- Tokenizer for parsing command input
+- Process spawning and management
+- Pipe creation and chaining
+- File descriptor handling
+- Error handling for system calls
