@@ -1,5 +1,5 @@
 use crate::{
-    Command, CommandKind,
+    Command, CommandKind, HistoryArgs,
     output::{FileOutput, Output, OutputStreams, StdErrOutput, StdOutput},
 };
 use anyhow::{Result, anyhow};
@@ -181,21 +181,28 @@ fn parse_history(args: &[String]) -> Result<Command> {
             .get(1)
             .ok_or_else(|| anyhow!("history: -r: filename argument required"))?
             .clone();
-        Ok(Command::History {
-            lines_count: None,
+        Ok(Command::History(HistoryArgs {
             read_from: Some(filename),
-            write_to: None,
-        })
+            ..HistoryArgs::default()
+        }))
     } else if args.first().map(|s| s.as_str()) == Some("-w") {
         let filename = args
             .get(1)
             .ok_or_else(|| anyhow!("history: -w: filename argument required"))?
             .clone();
-        Ok(Command::History {
-            lines_count: None,
-            read_from: None,
+        Ok(Command::History(HistoryArgs {
             write_to: Some(filename),
-        })
+            ..HistoryArgs::default()
+        }))
+    } else if args.first().map(|s| s.as_str()) == Some("-a") {
+        let filename = args
+            .get(1)
+            .ok_or_else(|| anyhow!("history: -a: filename argument required"))?
+            .clone();
+        Ok(Command::History(HistoryArgs {
+            append_to: Some(filename),
+            ..HistoryArgs::default()
+        }))
     } else {
         let lines_count = match args.first() {
             None => None,
@@ -204,11 +211,10 @@ fn parse_history(args: &[String]) -> Result<Command> {
                     .map_err(|_| anyhow!("history: numeric argument required"))?,
             ),
         };
-        Ok(Command::History {
+        Ok(Command::History(HistoryArgs {
             lines_count,
-            read_from: None,
-            write_to: None,
-        })
+            ..HistoryArgs::default()
+        }))
     }
 }
 

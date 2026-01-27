@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use is_executable::IsExecutable;
 use os_pipe::{PipeReader, pipe};
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::os::unix::io::FromRawFd;
@@ -18,6 +18,14 @@ use crate::{History, Output};
 pub enum ExecuteResult {
     Pipe(Option<PipeReader>),
     AddToHistory(Vec<String>),
+}
+
+#[derive(Debug, Default)]
+pub struct HistoryArgs {
+    pub lines_count: Option<u32>,
+    pub read_from: Option<String>,
+    pub write_to: Option<String>,
+    pub append_to: Option<String>,
 }
 
 #[derive(Debug, EnumString, EnumIter, PartialEq)]
@@ -50,11 +58,7 @@ pub enum Command {
     },
     Pwd,
     Cd(String),
-    History {
-        lines_count: Option<u32>,
-        read_from: Option<String>,
-        write_to: Option<String>,
-    },
+    History(HistoryArgs),
 }
 
 fn is_built_in(command: &str) -> bool {
@@ -76,11 +80,7 @@ pub fn execute_command(
 ) -> Result<ExecuteResult> {
     match command {
         Command::Exit => process::exit(0),
-        Command::History {
-            lines_count,
-            read_from,
-            write_to,
-        } => execute_history(lines_count, read_from, write_to, stdout_output, history),
+        Command::History(history_args) => execute_history(history_args, stdout_output, history),
         Command::Cd(path) => execute_cd(&path),
         Command::Echo {
             text,
@@ -95,12 +95,17 @@ pub fn execute_command(
 }
 
 fn execute_history(
-    lines_count: Option<u32>,
-    read_from: Option<String>,
-    write_to: Option<String>,
+    history_args: HistoryArgs,
     stdout_output: Option<&mut dyn Output>,
     history: &History,
 ) -> Result<ExecuteResult> {
+    let HistoryArgs {
+        lines_count,
+        read_from,
+        write_to,
+        append_to,
+    } = history_args;
+
     if let Some(source_filename) = read_from {
         let content = fs::read_to_string(&source_filename)
             .map_err(|e| anyhow!("history: {}: {}", source_filename, e))?;
@@ -112,10 +117,20 @@ fn execute_history(
         return Ok(ExecuteResult::AddToHistory(lines));
     }
 
-    if let Some(target_filename) = write_to {
+    if let Some(filename) = write_to.as_ref().or(append_to.as_ref()) {
         let contents = history.items.join("\n") + "\n";
-        fs::write(&target_filename, contents)
-            .map_err(|e| anyhow!("history: {}: {}", target_filename, e))?;
+        let append = append_to.is_some();
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(!append)
+            .append(append)
+            .open(filename)
+            .map_err(|e| anyhow!("history: {}: {}", filename, e))?;
+
+        write!(file, "{}", contents).map_err(|e| anyhow!("history: {}: {}", filename, e))?;
+
         return Ok(ExecuteResult::Pipe(None));
     }
 
