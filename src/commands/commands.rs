@@ -9,7 +9,7 @@ use std::os::unix::io::IntoRawFd;
 use std::path::PathBuf;
 use std::process::{Command as CmdCommand, Stdio};
 use std::thread;
-use std::{env, process};
+use std::env;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, EnumString};
 
@@ -19,6 +19,7 @@ pub enum ExecuteResult {
     Pipe(Option<PipeReader>),
     AddToHistory(Vec<String>),
     UpdateLastSaved(usize),
+    Exit,
 }
 
 #[derive(Debug, Default)]
@@ -80,7 +81,7 @@ pub fn execute_command(
     history: &History,
 ) -> Result<ExecuteResult> {
     match command {
-        Command::Exit => process::exit(0),
+        Command::Exit => Ok(ExecuteResult::Exit),
         Command::History(history_args) => execute_history(history_args, stdout_output, history),
         Command::Cd(path) => execute_cd(&path),
         Command::Echo {

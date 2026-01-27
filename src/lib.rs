@@ -15,12 +15,12 @@ pub fn handle_pipeline(
     commands: Vec<Command>,
     streams: &mut OutputStreams,
     history: &mut History,
-) -> Option<Vec<String>> {
+) -> (Option<Vec<String>>, bool) {
     let mut commands = commands;
     let len = commands.len();
 
     if len == 0 {
-        return None;
+        return (None, false);
     }
 
     let last_command = commands.pop().unwrap();
@@ -34,14 +34,15 @@ pub fn handle_pipeline(
             &mut *streams.stderr,
             history,
         ) {
+            Ok(ExecuteResult::Exit) => return (None, true),
             Ok(ExecuteResult::Pipe(output)) => previous_stdout = output,
-            Ok(ExecuteResult::AddToHistory(lines)) => return Some(lines),
+            Ok(ExecuteResult::AddToHistory(lines)) => return (Some(lines), false),
             Ok(ExecuteResult::UpdateLastSaved(index)) => {
                 history.last_saved_index = index;
             }
             Err(e) => {
                 streams.stderr.print(&e.to_string());
-                return None;
+                return (None, false);
             }
         }
     }
@@ -53,15 +54,16 @@ pub fn handle_pipeline(
         &mut *streams.stderr,
         history,
     ) {
-        Ok(ExecuteResult::AddToHistory(lines)) => Some(lines),
+        Ok(ExecuteResult::Exit) => (None, true),
+        Ok(ExecuteResult::AddToHistory(lines)) => (Some(lines), false),
         Ok(ExecuteResult::UpdateLastSaved(index)) => {
             history.last_saved_index = index;
-            None
+            (None, false)
         }
         Err(e) => {
             streams.stderr.print(&e.to_string());
-            None
+            (None, false)
         }
-        _ => None,
+        _ => (None, false),
     }
 }

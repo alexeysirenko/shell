@@ -8,23 +8,28 @@ use rustyline::{CompletionType, Config, Editor};
 
 use codecrafters_shell::{History, builtin_commands, handle_pipeline};
 
-fn execute_line(line: &str, history: &mut History) {
+fn execute_line(line: &str, history: &mut History) -> bool {
     let prompt = line.trim();
     if prompt.is_empty() {
-        return;
+        return false;
     }
 
     history.add_history_item(line).ok();
 
     match parse_pipeline(parse_prompt(prompt)) {
         Ok((command, mut streams)) => {
-            if let Some(lines_to_add) = handle_pipeline(command, &mut streams, history) {
-                for line in lines_to_add {
+            let (lines_to_add, should_exit) = handle_pipeline(command, &mut streams, history);
+            if let Some(lines) = lines_to_add {
+                for line in lines {
                     history.add_history_item(&line).ok();
                 }
             }
+            should_exit
         }
-        Err(error) => eprintln!("{}: {}", prompt, error),
+        Err(error) => {
+            eprintln!("{}: {}", prompt, error);
+            false
+        }
     }
 }
 
@@ -59,7 +64,9 @@ fn main() {
                 }
 
                 rl.add_history_entry(&line).ok();
-                execute_line(&line, &mut history);
+                if execute_line(&line, &mut history) {
+                    break;
+                }
             }
             Err(ReadlineError::Interrupted | ReadlineError::Eof) => {
                 break;
