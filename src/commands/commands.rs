@@ -53,6 +53,7 @@ pub enum Command {
     History {
         lines_count: Option<u32>,
         read_from: Option<String>,
+        write_to: Option<String>,
     },
 }
 
@@ -75,13 +76,16 @@ pub fn execute_command(
 ) -> Result<ExecuteResult> {
     match command {
         Command::Exit => process::exit(0),
-        Command::History { lines_count, read_from } => {
-            execute_history(lines_count, read_from, stdout_output, history)
-        }
+        Command::History {
+            lines_count,
+            read_from,
+            write_to,
+        } => execute_history(lines_count, read_from, write_to, stdout_output, history),
         Command::Cd(path) => execute_cd(&path),
-        Command::Echo { text, interpret_escapes } => {
-            execute_echo(&text, interpret_escapes, stdout_output)
-        }
+        Command::Echo {
+            text,
+            interpret_escapes,
+        } => execute_echo(&text, interpret_escapes, stdout_output),
         Command::Pwd => execute_pwd(stdout_output),
         Command::Type(cmd) => execute_type(&cmd, stdout_output),
         Command::Exec { command, args } => {
@@ -93,18 +97,26 @@ pub fn execute_command(
 fn execute_history(
     lines_count: Option<u32>,
     read_from: Option<String>,
+    write_to: Option<String>,
     stdout_output: Option<&mut dyn Output>,
     history: &History,
 ) -> Result<ExecuteResult> {
-    if let Some(filename) = read_from {
-        let content = fs::read_to_string(&filename)
-            .map_err(|e| anyhow!("history: {}: {}", filename, e))?;
+    if let Some(source_filename) = read_from {
+        let content = fs::read_to_string(&source_filename)
+            .map_err(|e| anyhow!("history: {}: {}", source_filename, e))?;
         let lines: Vec<String> = content
             .lines()
             .map(|s| s.to_string())
             .filter(|s| !s.trim().is_empty())
             .collect();
         return Ok(ExecuteResult::AddToHistory(lines));
+    }
+
+    if let Some(target_filename) = write_to {
+        let contents = history.items.join("\n") + "\n";
+        fs::write(&target_filename, contents)
+            .map_err(|e| anyhow!("history: {}: {}", target_filename, e))?;
+        return Ok(ExecuteResult::Pipe(None));
     }
 
     let line = history
@@ -164,7 +176,8 @@ fn execute_exec(
     stderr_output: &mut dyn Output,
 ) -> Result<ExecuteResult> {
     let is_final = stdout_output.is_some();
-    exec_piped(command, args, input, is_final, stdout_output, stderr_output).map(ExecuteResult::Pipe)
+    exec_piped(command, args, input, is_final, stdout_output, stderr_output)
+        .map(ExecuteResult::Pipe)
 }
 
 fn output_text(text: String, stdout_output: Option<&mut dyn Output>) -> Result<ExecuteResult> {
@@ -231,10 +244,7 @@ fn exec_piped(
         .stderr(stderr_cfg)
         .spawn()?;
 
-    // Handle stderr if redirected
-    if is_stderr_redirected
-        && let Some(stderr) = child.stderr.take()
-    {
+    if is_stderr_redirected && let Some(stderr) = child.stderr.take() {
         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
             stderr_output.print(&line);
         }

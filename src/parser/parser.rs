@@ -169,7 +169,10 @@ fn parse_echo(args: &[String]) -> Command {
     } else {
         (false, args.join(" "))
     };
-    Command::Echo { text, interpret_escapes }
+    Command::Echo {
+        text,
+        interpret_escapes,
+    }
 }
 
 fn parse_history(args: &[String]) -> Result<Command> {
@@ -178,7 +181,21 @@ fn parse_history(args: &[String]) -> Result<Command> {
             .get(1)
             .ok_or_else(|| anyhow!("history: -r: filename argument required"))?
             .clone();
-        Ok(Command::History { lines_count: None, read_from: Some(filename) })
+        Ok(Command::History {
+            lines_count: None,
+            read_from: Some(filename),
+            write_to: None,
+        })
+    } else if args.first().map(|s| s.as_str()) == Some("-w") {
+        let filename = args
+            .get(1)
+            .ok_or_else(|| anyhow!("history: -w: filename argument required"))?
+            .clone();
+        Ok(Command::History {
+            lines_count: None,
+            read_from: None,
+            write_to: Some(filename),
+        })
     } else {
         let lines_count = match args.first() {
             None => None,
@@ -187,7 +204,11 @@ fn parse_history(args: &[String]) -> Result<Command> {
                     .map_err(|_| anyhow!("history: numeric argument required"))?,
             ),
         };
-        Ok(Command::History { lines_count, read_from: None })
+        Ok(Command::History {
+            lines_count,
+            read_from: None,
+            write_to: None,
+        })
     }
 }
 
