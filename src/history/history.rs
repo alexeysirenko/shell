@@ -43,7 +43,7 @@ impl History {
         }
         let contents = new_items.join("\n") + "\n";
 
-        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+        let mut file = OpenOptions::new().create(true).append(false).open(path)?;
         write!(file, "{}", contents)?;
         self.last_saved_index = self.items.len();
         Ok(())
