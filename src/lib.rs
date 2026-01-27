@@ -11,7 +11,7 @@ pub use crate::commands::*;
 pub use crate::history::*;
 pub use crate::output::{FileOutput, Output, OutputStreams, StdErrOutput, StdOutput};
 
-/// Returns Some(commands) if additional commands need to be executed (e.g., from history -r)
+/// Returns Some(lines) if lines need to be added to history (from history -r)
 pub fn handle_pipeline(commands: Vec<Command>, streams: &mut OutputStreams, history: &History) -> Option<Vec<String>> {
     let mut commands = commands;
     let len = commands.len();
@@ -32,7 +32,7 @@ pub fn handle_pipeline(commands: Vec<Command>, streams: &mut OutputStreams, hist
             history,
         ) {
             Ok(ExecuteResult::Pipe(output)) => previous_stdout = output,
-            Ok(ExecuteResult::RunCommands(cmds)) => return Some(cmds),
+            Ok(ExecuteResult::AddToHistory(lines)) => return Some(lines),
             Err(e) => {
                 streams.stderr.print(&e.to_string());
                 return None;
@@ -47,7 +47,7 @@ pub fn handle_pipeline(commands: Vec<Command>, streams: &mut OutputStreams, hist
         &mut *streams.stderr,
         history,
     ) {
-        Ok(ExecuteResult::RunCommands(cmds)) => Some(cmds),
+        Ok(ExecuteResult::AddToHistory(lines)) => Some(lines),
         Err(e) => {
             streams.stderr.print(&e.to_string());
             None

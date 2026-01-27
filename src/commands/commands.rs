@@ -17,7 +17,7 @@ use crate::{History, Output};
 
 pub enum ExecuteResult {
     Pipe(Option<PipeReader>),
-    RunCommands(Vec<String>),
+    AddToHistory(Vec<String>),
 }
 
 #[derive(Debug, EnumString, EnumIter, PartialEq)]
@@ -99,12 +99,12 @@ fn execute_history(
     if let Some(filename) = read_from {
         let content = fs::read_to_string(&filename)
             .map_err(|e| anyhow!("history: {}: {}", filename, e))?;
-        let commands: Vec<String> = content
+        let lines: Vec<String> = content
             .lines()
             .map(|s| s.to_string())
             .filter(|s| !s.trim().is_empty())
             .collect();
-        return Ok(ExecuteResult::RunCommands(commands));
+        return Ok(ExecuteResult::AddToHistory(lines));
     }
 
     let line = history

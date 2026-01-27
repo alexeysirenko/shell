@@ -18,9 +18,9 @@ fn execute_line(line: &str, history: &mut History) {
 
     match parse_pipeline(parse_prompt(prompt)) {
         Ok((command, mut streams)) => {
-            if let Some(commands_to_run) = handle_pipeline(command, &mut streams, history) {
-                for cmd in commands_to_run {
-                    execute_line(&cmd, history);
+            if let Some(lines_to_add) = handle_pipeline(command, &mut streams, history) {
+                for line in lines_to_add {
+                    history.add_history_item(&line).ok();
                 }
             }
         }
