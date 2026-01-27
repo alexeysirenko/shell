@@ -4,6 +4,8 @@ use crate::{
 };
 use anyhow::{Result, anyhow};
 
+type RedirectResult = Result<(Vec<String>, Box<dyn Output>, Box<dyn Output>)>;
+
 pub enum PromptQuote {
     Unquoted,
     SingleQuoted,
@@ -69,7 +71,7 @@ pub fn parse_prompt(prompt: &str) -> Vec<String> {
     tokens
 }
 
-fn extract_redirects(args: &[String]) -> Result<(Vec<String>, Box<dyn Output>, Box<dyn Output>)> {
+fn extract_redirects(args: &[String]) -> RedirectResult {
     let mut filtered = Vec::new();
     let mut stdout: Box<dyn Output> = Box::new(StdOutput::new());
     let mut stderr: Box<dyn Output> = Box::new(StdErrOutput::new());
@@ -148,41 +150,52 @@ fn parse_command(args: Vec<String>) -> Result<(Command, OutputStreams)> {
     let (name, rest) = args.split_first().ok_or_else(|| anyhow!("Empty command"))?;
     let (args, stdout, stderr) = extract_redirects(rest)?;
 
-    let arg_str = args.join(" ");
-
     let command = match name.parse::<CommandKind>() {
         Ok(CommandKind::Exit) => Command::Exit,
-        Ok(CommandKind::Echo) => {
-            let (interpret_escapes, text) = if args.first().map(|arg| arg.as_str()) == Some("-e") {
-                (true, args[1..].join(" "))
-            } else {
-                (false, arg_str)
-            };
-            Command::Echo {
-                text,
-                interpret_escapes,
-            }
-        }
-        Ok(CommandKind::Type) => Command::Type(arg_str),
+        Ok(CommandKind::Echo) => parse_echo(&args),
+        Ok(CommandKind::Type) => Command::Type(args.join(" ")),
         Ok(CommandKind::Pwd) => Command::Pwd,
-        Ok(CommandKind::Cd) => Command::Cd(arg_str),
-        Ok(CommandKind::History) => {
-            let lines_count = match args.first() {
-                None => None,
-                Some(s) => Some(
-                    s.parse::<u32>()
-                        .map_err(|_| anyhow!("history: numeric argument required"))?,
-                ),
-            };
-            Command::History { lines_count }
-        }
-        Err(_) => Command::Exec {
-            command: name.to_string(),
-            args,
-        },
+        Ok(CommandKind::Cd) => Command::Cd(args.join(" ")),
+        Ok(CommandKind::History) => parse_history(&args)?,
+        Err(_) => parse_exec(name, args),
     };
 
     Ok((command, OutputStreams::new(stdout, stderr)))
+}
+
+fn parse_echo(args: &[String]) -> Command {
+    let (interpret_escapes, text) = if args.first().map(|arg| arg.as_str()) == Some("-e") {
+        (true, args[1..].join(" "))
+    } else {
+        (false, args.join(" "))
+    };
+    Command::Echo { text, interpret_escapes }
+}
+
+fn parse_history(args: &[String]) -> Result<Command> {
+    if args.first().map(|s| s.as_str()) == Some("-r") {
+        let filename = args
+            .get(1)
+            .ok_or_else(|| anyhow!("history: -r: filename argument required"))?
+            .clone();
+        Ok(Command::History { lines_count: None, read_from: Some(filename) })
+    } else {
+        let lines_count = match args.first() {
+            None => None,
+            Some(s) => Some(
+                s.parse::<u32>()
+                    .map_err(|_| anyhow!("history: numeric argument required"))?,
+            ),
+        };
+        Ok(Command::History { lines_count, read_from: None })
+    }
+}
+
+fn parse_exec(name: &str, args: Vec<String>) -> Command {
+    Command::Exec {
+        command: name.to_string(),
+        args,
+    }
 }
 
 #[cfg(test)]

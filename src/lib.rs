@@ -11,12 +11,13 @@ pub use crate::commands::*;
 pub use crate::history::*;
 pub use crate::output::{FileOutput, Output, OutputStreams, StdErrOutput, StdOutput};
 
-pub fn handle_pipeline(commands: Vec<Command>, streams: &mut OutputStreams, history: &History) {
+/// Returns Some(commands) if additional commands need to be executed (e.g., from history -r)
+pub fn handle_pipeline(commands: Vec<Command>, streams: &mut OutputStreams, history: &History) -> Option<Vec<String>> {
     let mut commands = commands;
     let len = commands.len();
 
     if len == 0 {
-        return;
+        return None;
     }
 
     let last_command = commands.pop().unwrap();
@@ -30,21 +31,27 @@ pub fn handle_pipeline(commands: Vec<Command>, streams: &mut OutputStreams, hist
             &mut *streams.stderr,
             history,
         ) {
-            Ok(output) => previous_stdout = output,
+            Ok(ExecuteResult::Pipe(output)) => previous_stdout = output,
+            Ok(ExecuteResult::RunCommands(cmds)) => return Some(cmds),
             Err(e) => {
                 streams.stderr.print(&e.to_string());
-                return;
+                return None;
             }
         }
     }
 
-    if let Err(e) = execute_command(
+    match execute_command(
         last_command,
         previous_stdout,
         Some(&mut *streams.stdout),
         &mut *streams.stderr,
         history,
     ) {
-        streams.stderr.print(&e.to_string());
+        Ok(ExecuteResult::RunCommands(cmds)) => Some(cmds),
+        Err(e) => {
+            streams.stderr.print(&e.to_string());
+            None
+        }
+        _ => None,
     }
 }

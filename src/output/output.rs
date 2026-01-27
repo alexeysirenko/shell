@@ -9,6 +9,7 @@ pub trait Output {
     }
 }
 
+#[derive(Default)]
 pub struct StdOutput;
 
 impl StdOutput {
@@ -23,6 +24,7 @@ impl Output for StdOutput {
     }
 }
 
+#[derive(Default)]
 pub struct StdErrOutput;
 
 impl StdErrOutput {
@@ -79,8 +81,10 @@ impl OutputStreams {
     pub fn new(stdout: Box<dyn Output>, stderr: Box<dyn Output>) -> Self {
         Self { stdout, stderr }
     }
+}
 
-    pub fn default() -> Self {
+impl Default for OutputStreams {
+    fn default() -> Self {
         Self {
             stdout: Box::new(StdOutput::new()),
             stderr: Box::new(StdErrOutput::new()),

@@ -4,6 +4,7 @@ use std::{collections::HashSet, env, fs, path::Path};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+#[derive(Default)]
 pub struct ExecutablesFinder {}
 
 impl ExecutablesFinder {
@@ -20,10 +21,11 @@ impl ExecutablesFinder {
                 for entry in entries.flatten() {
                     let path = entry.path();
 
-                    if path.is_file() && self.is_executable(&path) {
-                        if let Some(name) = path.file_name() {
-                            binaries.insert(name.to_string_lossy().to_string());
-                        }
+                    if path.is_file()
+                        && self.is_executable(&path)
+                        && let Some(name) = path.file_name()
+                    {
+                        binaries.insert(name.to_string_lossy().to_string());
                     }
                 }
             }

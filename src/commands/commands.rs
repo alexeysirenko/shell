@@ -15,6 +15,11 @@ use strum_macros::{EnumIter, EnumString};
 
 use crate::{History, Output};
 
+pub enum ExecuteResult {
+    Pipe(Option<PipeReader>),
+    RunCommands(Vec<String>),
+}
+
 #[derive(Debug, EnumString, EnumIter, PartialEq)]
 pub enum CommandKind {
     #[strum(serialize = "exit")]
@@ -47,6 +52,7 @@ pub enum Command {
     Cd(String),
     History {
         lines_count: Option<u32>,
+        read_from: Option<String>,
     },
 }
 
@@ -66,83 +72,107 @@ pub fn execute_command(
     stdout_output: Option<&mut dyn Output>,
     stderr_output: &mut dyn Output,
     history: &History,
-) -> Result<Option<PipeReader>> {
+) -> Result<ExecuteResult> {
     match command {
         Command::Exit => process::exit(0),
-        Command::History { lines_count } => {
-            let line = history
-                .items
-                .iter()
-                .enumerate()
-                .rev()
-                .take(lines_count.unwrap_or(u32::MAX) as usize)
-                .rev()
-                .map(|(i, item)| format!("    {}  {}", i + 1, item))
-                .collect::<Vec<String>>()
-                .join("\n");
-            if let Some(out) = stdout_output {
-                out.print(&line);
-                Ok(None)
-            } else {
-                pipe_string(line)
-            }
+        Command::History { lines_count, read_from } => {
+            execute_history(lines_count, read_from, stdout_output, history)
         }
-        Command::Cd(path) => {
-            cd(&path)?;
-            Ok(None)
+        Command::Cd(path) => execute_cd(&path),
+        Command::Echo { text, interpret_escapes } => {
+            execute_echo(&text, interpret_escapes, stdout_output)
         }
-        Command::Echo {
-            text,
-            interpret_escapes,
-        } => {
-            let output = if interpret_escapes {
-                interpret_escape_sequences(&text)
-            } else {
-                text
-            };
-            if let Some(out) = stdout_output {
-                out.print(&output);
-                Ok(None)
-            } else {
-                pipe_string(output)
-            }
-        }
-        Command::Pwd => {
-            let dir = fs::canonicalize(env::current_dir()?)?;
-            let text = dir.display().to_string();
-            if let Some(out) = stdout_output {
-                out.print(&text);
-                Ok(None)
-            } else {
-                pipe_string(text)
-            }
-        }
-        Command::Type(cmd) => {
-            let text = if is_built_in(&cmd) {
-                format!("{} is a shell builtin", cmd)
-            } else if let Some(path) = find_in_path(&cmd) {
-                format!("{} is {}", cmd, path.display())
-            } else {
-                format!("{}: not found", cmd)
-            };
-            if let Some(out) = stdout_output {
-                out.print(&text);
-                Ok(None)
-            } else {
-                pipe_string(text)
-            }
-        }
+        Command::Pwd => execute_pwd(stdout_output),
+        Command::Type(cmd) => execute_type(&cmd, stdout_output),
         Command::Exec { command, args } => {
-            let is_final = stdout_output.is_some();
-            exec_piped(
-                &command,
-                &args,
-                input,
-                is_final,
-                stdout_output,
-                stderr_output,
-            )
+            execute_exec(&command, &args, input, stdout_output, stderr_output)
         }
+    }
+}
+
+fn execute_history(
+    lines_count: Option<u32>,
+    read_from: Option<String>,
+    stdout_output: Option<&mut dyn Output>,
+    history: &History,
+) -> Result<ExecuteResult> {
+    if let Some(filename) = read_from {
+        let content = fs::read_to_string(&filename)
+            .map_err(|e| anyhow!("history: {}: {}", filename, e))?;
+        let commands: Vec<String> = content
+            .lines()
+            .map(|s| s.to_string())
+            .filter(|s| !s.trim().is_empty())
+            .collect();
+        return Ok(ExecuteResult::RunCommands(commands));
+    }
+
+    let line = history
+        .items
+        .iter()
+        .enumerate()
+        .rev()
+        .take(lines_count.unwrap_or(u32::MAX) as usize)
+        .rev()
+        .map(|(i, item)| format!("    {}  {}", i + 1, item))
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    output_text(line, stdout_output)
+}
+
+fn execute_cd(path: &str) -> Result<ExecuteResult> {
+    cd(path)?;
+    Ok(ExecuteResult::Pipe(None))
+}
+
+fn execute_echo(
+    text: &str,
+    interpret_escapes: bool,
+    stdout_output: Option<&mut dyn Output>,
+) -> Result<ExecuteResult> {
+    let output = if interpret_escapes {
+        interpret_escape_sequences(text)
+    } else {
+        text.to_string()
+    };
+    output_text(output, stdout_output)
+}
+
+fn execute_pwd(stdout_output: Option<&mut dyn Output>) -> Result<ExecuteResult> {
+    let dir = fs::canonicalize(env::current_dir()?)?;
+    let text = dir.display().to_string();
+    output_text(text, stdout_output)
+}
+
+fn execute_type(cmd: &str, stdout_output: Option<&mut dyn Output>) -> Result<ExecuteResult> {
+    let text = if is_built_in(cmd) {
+        format!("{} is a shell builtin", cmd)
+    } else if let Some(path) = find_in_path(cmd) {
+        format!("{} is {}", cmd, path.display())
+    } else {
+        format!("{}: not found", cmd)
+    };
+    output_text(text, stdout_output)
+}
+
+fn execute_exec(
+    command: &str,
+    args: &[String],
+    input: Option<PipeReader>,
+    stdout_output: Option<&mut dyn Output>,
+    stderr_output: &mut dyn Output,
+) -> Result<ExecuteResult> {
+    let is_final = stdout_output.is_some();
+    exec_piped(command, args, input, is_final, stdout_output, stderr_output).map(ExecuteResult::Pipe)
+}
+
+fn output_text(text: String, stdout_output: Option<&mut dyn Output>) -> Result<ExecuteResult> {
+    if let Some(out) = stdout_output {
+        out.print(&text);
+        Ok(ExecuteResult::Pipe(None))
+    } else {
+        pipe_string(text).map(ExecuteResult::Pipe)
     }
 }
 
@@ -202,20 +232,20 @@ fn exec_piped(
         .spawn()?;
 
     // Handle stderr if redirected
-    if is_stderr_redirected {
-        if let Some(stderr) = child.stderr.take() {
-            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                stderr_output.print(&line);
-            }
+    if is_stderr_redirected
+        && let Some(stderr) = child.stderr.take()
+    {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            stderr_output.print(&line);
         }
     }
 
     if is_final && is_stdout_redirected {
-        if let Some(stdout) = child.stdout.take() {
-            if let Some(out) = stdout_output {
-                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                    out.print(&line);
-                }
+        if let Some(stdout) = child.stdout.take()
+            && let Some(out) = stdout_output
+        {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                out.print(&line);
             }
         }
         child.wait()?;
