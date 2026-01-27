@@ -70,4 +70,8 @@ fn main() {
             }
         }
     }
+
+    if let Some(path) = history.histfile.clone() {
+        history.append_to_file(&path).ok();
+    }
 }
