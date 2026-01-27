@@ -47,6 +47,9 @@ fn main() {
     rl.set_helper(Some(ShellCompleter::new(all_commands)));
 
     let mut history = History::new();
+    if let Some(path) = history.histfile.clone() {
+        history.load_from_file(&path).ok();
+    }
     loop {
         match rl.readline("$ ") {
             Ok(line) => {
