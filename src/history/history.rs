@@ -33,20 +33,9 @@ impl History {
         Ok(())
     }
 
-    pub fn append_to_file(&mut self, path: &str) -> Result<()> {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-
-        // let new_items = &self.items[self.last_saved_index..];
-        let new_items = &self.items;
-
-        if new_items.is_empty() {
-            return Ok(());
-        }
-        let contents = new_items.join("\n") + "\n";
-
-        let mut file = OpenOptions::new().create(true).append(false).open(path)?;
-        write!(file, "{}", contents)?;
+    pub fn save_to_file(&mut self, path: &str) -> Result<()> {
+        let contents = self.items.join("\n") + "\n";
+        std::fs::write(path, contents)?;
         self.last_saved_index = self.items.len();
         Ok(())
     }
