@@ -3,6 +3,7 @@ use anyhow::Result;
 #[derive(Default)]
 pub struct History {
     pub items: Vec<String>,
+    pub last_saved_index: usize,
 }
 
 impl History {

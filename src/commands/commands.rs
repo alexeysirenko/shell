@@ -18,6 +18,7 @@ use crate::{History, Output};
 pub enum ExecuteResult {
     Pipe(Option<PipeReader>),
     AddToHistory(Vec<String>),
+    UpdateLastSaved(usize),
 }
 
 #[derive(Debug, Default)]
@@ -118,8 +119,14 @@ fn execute_history(
     }
 
     if let Some(filename) = write_to.as_ref().or(append_to.as_ref()) {
-        let contents = history.items.join("\n") + "\n";
         let append = append_to.is_some();
+
+        let items = if append {
+            &history.items[history.last_saved_index..]
+        } else {
+            &history.items
+        };
+        let contents = items.join("\n") + "\n";
 
         let mut file = OpenOptions::new()
             .create(true)
@@ -131,7 +138,7 @@ fn execute_history(
 
         write!(file, "{}", contents).map_err(|e| anyhow!("history: {}: {}", filename, e))?;
 
-        return Ok(ExecuteResult::Pipe(None));
+        return Ok(ExecuteResult::UpdateLastSaved(history.items.len()));
     }
 
     let line = history
