@@ -37,7 +37,9 @@ impl History {
         use std::fs::OpenOptions;
         use std::io::Write;
 
-        let new_items = &self.items[self.last_saved_index..];
+        // let new_items = &self.items[self.last_saved_index..];
+        let new_items = &self.items;
+
         if new_items.is_empty() {
             return Ok(());
         }
