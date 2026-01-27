@@ -35,7 +35,7 @@ fn main() {
                     continue;
                 }
 
-                // rl.add_history_entry(&line).ok();
+                rl.add_history_entry(&line).ok();
                 history.add_history_item(&line).ok();
 
                 match parse_pipeline(parse_prompt(prompt)) {
